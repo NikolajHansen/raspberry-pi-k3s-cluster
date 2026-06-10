@@ -17,6 +17,14 @@
   vars:
     kubeconfig: /etc/rancher/k3s/k3s.yaml
     helm_apps:
+      # Harvester UI Extension for Rancher — adds Harvester cluster type to Rancher UI
+      - name: harvester-ui-extension
+        chart: harvester-ui-ext/harvester
+        repo: harvester-ui-ext
+        repo_url: https://harvester.github.io/harvester-ui-extension/
+        namespace: cattle-ui-plugin-system
+        version: "1.8.0"
+
       # Example — uncomment and extend as needed:
       # - name: my-app
       #   chart: myrepo/my-app
