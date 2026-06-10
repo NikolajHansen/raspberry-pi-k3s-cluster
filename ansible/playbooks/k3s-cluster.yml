@@ -1,0 +1,179 @@
+---
+# Play 1: Common setup on all nodes (cgroups)
+- name: Configure all nodes
+  hosts: all
+  become: yes
+  tasks:
+    - name: Check if cgroups memory is enabled
+      command: grep -q "cgroup_enable=memory" /boot/firmware/cmdline.txt
+      register: cgroups_check
+      failed_when: false
+      changed_when: false
+      check_mode: no
+
+    - name: Enable cgroups memory
+      lineinfile:
+        path: /boot/firmware/cmdline.txt
+        regexp: '^((?!cgroup_enable=memory).*)$'
+        line: '\1 cgroup_enable=memory cgroup_memory=1'
+        backrefs: yes
+      when: cgroups_check.rc != 0
+      notify: Reboot node
+
+  handlers:
+    - name: Reboot node
+      reboot:
+        reboot_timeout: 300
+
+
+# Play 2: Install K3s on master, deploy Unbound and CoreDNS
+- name: Install K3s on master
+  hosts: masters
+  become: yes
+  vars:
+    master_ip: 192.168.1.50
+    unbound_ip: 192.168.1.50
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  tasks:
+    - name: Install K3s server
+      shell: >
+        curl -sfL https://get.k3s.io | sh -s - server
+        --bind-address {{ master_ip }}
+        --node-ip {{ master_ip }}
+        --cluster-dns 10.43.0.10
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Wait for K3s node token
+      wait_for:
+        path: /var/lib/rancher/k3s/server/node-token
+        timeout: 120
+
+    - name: Wait for K3s API to be ready
+      command: kubectl --kubeconfig {{ kubeconfig }} get nodes
+      register: k3s_ready
+      retries: 20
+      delay: 10
+      until: k3s_ready.rc == 0
+      changed_when: false
+
+    - name: Fetch K3s token
+      slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: k3s_token
+
+    - name: Save token to controller
+      copy:
+        content: "{{ k3s_token.content | b64decode | trim }}"
+        dest: /tmp/k3s_token
+        mode: '0600'
+      delegate_to: localhost
+      become: no
+
+    - name: Deploy Unbound DNS
+      template:
+        src: ../templates/unbound.yaml.j2
+        dest: /tmp/unbound.yaml
+      register: unbound_template
+      notify: Apply Unbound manifest
+
+    - name: Deploy CoreDNS custom config
+      template:
+        src: ../templates/coredns-custom.yaml.j2
+        dest: /tmp/coredns-custom.yaml
+      register: coredns_template
+      notify: Apply CoreDNS config
+
+  handlers:
+    - name: Apply Unbound manifest
+      command: kubectl --kubeconfig {{ kubeconfig }} apply -f /tmp/unbound.yaml
+      changed_when: true
+
+    - name: Apply CoreDNS config
+      command: kubectl --kubeconfig {{ kubeconfig }} apply -f /tmp/coredns-custom.yaml
+      changed_when: true
+      notify: Restart CoreDNS
+
+    - name: Restart CoreDNS
+      command: >
+        kubectl --kubeconfig {{ kubeconfig }}
+        rollout restart deployment coredns -n kube-system
+      changed_when: true
+
+
+# Play 3: Join workers to the cluster
+- name: Join workers to K3s cluster
+  hosts: all:!masters
+  become: yes
+  tasks:
+    - name: Install K3s agent
+      shell: >
+        curl -sfL https://get.k3s.io | sh -s - agent
+        --server https://192.168.1.50:6443
+        --token {{ lookup('file', '/tmp/k3s_token') | trim }}
+      args:
+        creates: /usr/local/bin/k3s
+
+
+# Play 4: Install Rancher on master
+- name: Install Rancher
+  hosts: masters
+  become: yes
+  vars:
+    master_ip: 192.168.1.50
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    rancher_hostname: "rancher.{{ master_ip }}.sslip.io"
+  tasks:
+    - name: Install Helm
+      shell: curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Add cert-manager CRDs
+      command: >
+        kubectl --kubeconfig {{ kubeconfig }}
+        apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.crds.yaml
+      changed_when: false
+
+    - name: Add Jetstack Helm repo
+      command: helm repo add jetstack https://charts.jetstack.io --force-update
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Add Rancher Helm repo
+      command: helm repo add rancher-latest https://releases.rancher.com/server-charts/latest --force-update
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Update Helm repos
+      command: helm repo update
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Install cert-manager
+      command: >
+        helm upgrade --install cert-manager jetstack/cert-manager
+        --namespace cert-manager
+        --create-namespace
+        --wait
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: cert_manager_result
+      changed_when: "'has been upgraded' in cert_manager_result.stdout or 'has been deployed' in cert_manager_result.stdout"
+
+    - name: Install Rancher
+      command: >
+        helm upgrade --install rancher rancher-latest/rancher
+        --namespace cattle-system
+        --create-namespace
+        --set hostname={{ rancher_hostname }}
+        --set bootstrapPassword={{ rancher_bootstrap_password }}
+        --wait
+        --timeout 10m
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: rancher_result
+      changed_when: "'has been upgraded' in rancher_result.stdout or 'has been deployed' in rancher_result.stdout"

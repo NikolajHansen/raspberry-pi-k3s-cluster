@@ -1,0 +1,16 @@
+---
+- name: Configure static IPs via NetworkManager
+  hosts: all
+  become: yes
+  tasks:
+    - name: Set static IP on eth0 via nmcli (fire and reconnect)
+      shell: |
+        nmcli connection modify "Wired connection 1" \
+          ipv4.method manual \
+          ipv4.addresses "{{ static_ip }}/24" \
+          ipv4.gateway "192.168.1.1" \
+          ipv4.dns "192.168.1.1 192.168.1.21" \
+          ipv4.dns-search "barnabas.dk"
+        nohup bash -c 'sleep 3 && nmcli connection up "Wired connection 1"' > /tmp/nmcli-up.log 2>&1 &
+      async: 10
+      poll: 0

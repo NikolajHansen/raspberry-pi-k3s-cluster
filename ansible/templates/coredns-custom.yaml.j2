@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  # Forward internal domains to Unbound on the master node
+  internal.server: |
+    barnabas.dk:53 hsys.dk:53 168.192.in-addr.arpa:53 {
+        errors
+        cache 30
+        forward . {{ unbound_ip }}
+    }
+  # Forward all other external DNS to Unbound as well
+  external.server: |
+    .:53 {
+        errors
+        cache 30
+        forward . {{ unbound_ip }} {
+            except cluster.local in-addr.arpa ip6.arpa
+        }
+    }

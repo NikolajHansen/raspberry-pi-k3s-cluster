@@ -1,0 +1,80 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: unbound-config
+  namespace: kube-system
+data:
+  unbound.conf: |
+    server:
+      interface: 0.0.0.0
+      port: 53
+      do-ip4: yes
+      do-udp: yes
+      do-tcp: yes
+      # Allow queries from cluster and LAN subnets
+      access-control: 127.0.0.0/8 allow
+      access-control: 192.168.1.0/24 allow
+      # Privacy
+      hide-identity: yes
+      hide-version: yes
+      # Performance
+      cache-min-ttl: 300
+      cache-max-ttl: 86400
+      prefetch: yes
+
+    # Local DNS records for the cluster nodes
+    local-zone: "barnabas.dk." transparent
+    local-data: "master01.barnabas.dk. IN A 192.168.1.50"
+    local-data: "node01.barnabas.dk. IN A 192.168.1.51"
+    local-data: "node02.barnabas.dk. IN A 192.168.1.52"
+    local-data: "node03.barnabas.dk. IN A 192.168.1.53"
+    local-data: "node04.barnabas.dk. IN A 192.168.1.54"
+    local-data: "node05.barnabas.dk. IN A 192.168.1.55"
+    local-data: "node06.barnabas.dk. IN A 192.168.1.56"
+    local-data: "node07.barnabas.dk. IN A 192.168.1.57"
+    local-data: "node08.barnabas.dk. IN A 192.168.1.58"
+    local-data: "node09.barnabas.dk. IN A 192.168.1.59"
+
+    # Forward everything else to upstream resolvers
+    forward-zone:
+      name: "."
+      forward-addr: 1.1.1.1
+      forward-addr: 1.0.0.1
+      forward-addr: 8.8.8.8
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unbound
+  namespace: kube-system
+  labels:
+    app: unbound
+spec:
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  nodeSelector:
+    kubernetes.io/hostname: master01
+  containers:
+  - name: unbound
+    image: cjuniorfox/unbound:1.20.0
+    ports:
+    - containerPort: 53
+      hostPort: 53
+      protocol: UDP
+      name: dns-udp
+    - containerPort: 53
+      hostPort: 53
+      protocol: TCP
+      name: dns-tcp
+    securityContext:
+      capabilities:
+        add: ["NET_BIND_SERVICE"]
+    volumeMounts:
+    - name: config
+      mountPath: /etc/unbound/
+      readOnly: true
+  volumes:
+  - name: config
+    configMap:
+      name: unbound-config
