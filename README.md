@@ -20,9 +20,12 @@ All nodes run **Raspberry Pi OS Lite** (Debian 12 Bookworm, 64-bit, headless).
 | [Helm](https://helm.sh) | Kubernetes package manager |
 | [Rancher](https://rancher.com) | Kubernetes management UI |
 | [cert-manager](https://cert-manager.io) | TLS certificate management |
+| [MetalLB](https://metallb.universe.tf) | Bare-metal load balancer (L2 mode) |
 | [Unbound](https://nlnetlabs.nl/projects/unbound/) | Internal DNS resolver (deployed in-cluster) |
 | [CoreDNS](https://coredns.io) | Kubernetes cluster DNS (k3s default, customised) |
 | [NetworkManager](https://networkmanager.dev) | Static IP management on nodes |
+| [Lyrion Music Server](https://lyrion.org) | Music streaming server (Squeezebox compatible) |
+| [Bitwarden CLI](https://bitwarden.com/help/cli/) | Secrets management for Ansible |
 
 ## Network Architecture
 
@@ -32,31 +35,24 @@ graph TD
     pfsense[pfSense Router\n10.0.0.1]
     switch[Network Switch]
     dns[DNS Server\n10.0.0.21]
+    nfs[NFS Server\nnfs.example.com]
 
     master[master01\n10.0.0.50\nControl Plane]
     node1[node01\n10.0.0.51]
     node2[node02\n10.0.0.52]
-    node3[node03\n10.0.0.53]
-    node4[node04\n10.0.0.54]
-    node5[node05\n10.0.0.55]
-    node6[node06\n10.0.0.56]
-    node7[node07\n10.0.0.57]
-    node8[node08\n10.0.0.58]
-    node9[node09\n10.0.0.59]
+    node3[node03-09\n10.0.0.53–59]
+
+    metallb[MetalLB VIP pool\n10.0.0.60–70]
 
     internet --> pfsense
     pfsense --> switch
     dns --> switch
+    nfs --> switch
     switch --> master
     switch --> node1
     switch --> node2
     switch --> node3
-    switch --> node4
-    switch --> node5
-    switch --> node6
-    switch --> node7
-    switch --> node8
-    switch --> node9
+    master -->|L2 ARP| metallb
 ```
 
 ## Kubernetes Architecture
@@ -66,17 +62,22 @@ graph TD
     rancher[Rancher UI\nrancher.example.com]
     master[master01\nK3s Server\nControl Plane + etcd]
     certmgr[cert-manager\ncattle-system]
+    metallb[MetalLB\nmetallb-system]
     unbound[Unbound DNS\nkube-system]
     coredns[CoreDNS\nkube-system]
+    lyrion[Lyrion Music Server\nlyrion namespace\nVIP: 10.0.0.60]
 
     workers[Worker Nodes\nnode01–node09\nK3s Agents]
 
     rancher --> master
     certmgr --> master
+    metallb --> master
     unbound --> master
     coredns --> master
+    lyrion --> workers
     master -->|schedules workloads| workers
     coredns -->|forwards internal DNS| unbound
+    metallb -->|assigns VIPs| lyrion
 ```
 
 ## Provisioning Flow
@@ -84,13 +85,13 @@ graph TD
 ```mermaid
 flowchart LR
     A[Discover nodes\nvia SSH scan] --> B[Update Ansible\ninventory]
-    B -->     C[static-ips.yml\nAssign static IPs\nvia nmcli]
+    B --> C[static-ips.yml\nAssign static IPs\nvia nmcli]
     C --> D[k3s-cluster.yml\nInstall K3s server\non master01]
     D --> E[Join node01-09\nas K3s agents]
     E --> F[Deploy Unbound\n+ CoreDNS config]
-    F --> G[Install Helm\n+ cert-manager]
+    F --> G[Install Helm\n+ cert-manager\n+ MetalLB]
     G --> H[Install Rancher]
-    H --> I[helm-apps.yml\nDeploy additional\nHelmchart apps]
+    H --> I[kubectl apply\nk8s/lyrion.yaml]
 ```
 
 ## Repository Structure
@@ -99,7 +100,7 @@ flowchart LR
 .
 ├── ansible/
 │   ├── inventory/
-│   │   ├── inventory.yml            # Hosts and group definitions
+│   │   ├── inventory.yml            # Hosts, groups, Bitwarden lookup for become_password
 │   │   └── credentials.yml.example # Credentials template (never commit the real file)
 │   ├── playbooks/
 │   │   ├── k3s-cluster.yml          # Full cluster bootstrap (cgroups → k3s → Rancher)
@@ -108,6 +109,8 @@ flowchart LR
 │   └── templates/
 │       ├── unbound.yaml.j2          # Unbound DNS Kubernetes manifest
 │       └── coredns-custom.yaml.j2   # CoreDNS custom ConfigMap
+├── k8s/
+│   └── lyrion.yaml                  # Lyrion Music Server manifests (PV/PVC, Deployment, Service, Ingress)
 └── README.md
 ```
 
@@ -116,28 +119,51 @@ flowchart LR
 ### Prerequisites
 
 - Ansible installed on your controller machine (`pip install ansible`)
-- `sshpass` installed for password-based SSH
-- Copy `ansible/inventory/credentials.yml.example` to `~/credentials.yml` and fill in values
+- `community.general` Ansible collection (`ansible-galaxy collection install community.general`)
+- Bitwarden CLI installed and logged in (`bw login`)
+- SSH key deployed to all nodes
+- A Bitwarden item named `k3s-cluster` with fields: `username`, `password`, `ansible_become_password`
 
-### Bootstrap the cluster
+### Convenient wrapper
+
+A helper script at `~/bin/k3s-ansible` unlocks Bitwarden and runs playbooks from the correct directory:
+
+```bash
+k3s-ansible k3s-cluster.yml          # full cluster bootstrap
+k3s-ansible static-ips.yml           # reassign static IPs
+k3s-ansible helm-apps.yml            # deploy additional Helm apps
+```
+
+### Bootstrap the cluster manually
 
 ```bash
 cd ansible
-ansible-playbook -i inventory/inventory.yml playbooks/k3s-cluster.yml -e @~/credentials.yml
+bw unlock  # copy the session token, then:
+export BW_SESSION=<token>
+ansible-playbook -i inventory/inventory.yml playbooks/k3s-cluster.yml
 ```
 
 ### Assign static IPs only
 
 ```bash
-ansible-playbook -i inventory/inventory.yml playbooks/static-ips.yml -e @~/credentials.yml
+ansible-playbook -i inventory/inventory.yml playbooks/static-ips.yml
 ```
+
+### Deploy Lyrion Music Server
+
+```bash
+kubectl apply -f k8s/lyrion.yaml
+```
+
+> **NFS note**: The NFS server must support NFSv3. The mount option `vers=3` is set explicitly.
+> The PV uses `storageClassName: ""` to prevent k3s from defaulting to local-path.
 
 ### Deploy additional Helm apps
 
 Add entries to the `helm_apps` list in `playbooks/helm-apps.yml`, then:
 
 ```bash
-ansible-playbook -i inventory/inventory.yml playbooks/helm-apps.yml -e @~/credentials.yml
+k3s-ansible helm-apps.yml
 ```
 
 ## Accessing Rancher
@@ -146,11 +172,34 @@ Once the cluster is up, Rancher is available at:
 
 **https://rancher.example.com**
 
-The bootstrap password is defined in your local `~/credentials.yml` (`rancher_bootstrap_password`).
+The bootstrap password is stored in Bitwarden (`k3s-cluster` → `rancher_bootstrap_password`).
+
+## MetalLB
+
+MetalLB runs in L2 mode with IP pool `10.0.0.60–10.0.0.70`. It provides stable VIPs for `LoadBalancer` services.
+
+> **Important**: k3s ships with a built-in load balancer (klipper/servicelb). This conflicts with MetalLB.
+> It is disabled via `--disable servicelb` in the k3s server args (`/etc/systemd/system/k3s.service`).
+
+| Service | VIP |
+|---|---|
+| Lyrion Music Server | 10.0.0.60 |
+| Traefik (ingress) | 10.0.0.61 |
+
+## Lyrion Music Server
+
+Lyrion (formerly Logitech Media Server) streams music to Squeezebox hardware players.
+
+- **Web UI**: http://lyrion.example.com:9000
+- **Squeezebox protocol**: TCP/UDP 3483 (UDP broadcast for player discovery)
+- **Music library**: NFS mount from `nfs.example.com:/greenlake/media` (read-only, NFSv3)
+- **VIP**: `10.0.0.60` via MetalLB — stable across pod rescheduling
+
+> **Note**: Pod config (`/config`) uses `emptyDir` — Lyrion settings are lost on pod restart.
+> A future improvement is to add a persistent PVC for `/config`.
 
 ## Roadmap
 
 - [ ] Dedicated cluster VLAN with pfSense routing
 - [ ] Move cluster to isolated `10.1.10.x` network
-- [ ] MetalLB for bare-metal load balancing
-- [ ] Persistent storage (NFS or Longhorn)
+- [ ] Persistent storage for Lyrion config (replace emptyDir with PVC)
