@@ -6,8 +6,8 @@ A 10-node Kubernetes cluster running on Raspberry Pi hardware, provisioned with 
 
 | Role | Hostname | IP | Count |
 |---|---|---|---|
-| Control Plane | master01 | 192.168.1.50 | 1 |
-| Worker | node01–node09 | 192.168.1.51–59 | 9 |
+| Control Plane | master01 | 10.0.0.50 | 1 |
+| Worker | node01–node09 | 10.0.0.51–59 | 9 |
 
 All nodes run **Raspberry Pi OS Lite** (Debian 12 Bookworm, 64-bit, headless).
 
@@ -29,20 +29,20 @@ All nodes run **Raspberry Pi OS Lite** (Debian 12 Bookworm, 64-bit, headless).
 ```mermaid
 graph TD
     internet((Internet))
-    pfsense[pfSense Router\n192.168.1.1]
+    pfsense[pfSense Router\n10.0.0.1]
     switch[Network Switch]
-    dns[Unbound DNS\n192.168.1.21]
+    dns[DNS Server\n10.0.0.21]
 
-    master[master01\n192.168.1.50\nControl Plane]
-    node1[node01\n192.168.1.51]
-    node2[node02\n192.168.1.52]
-    node3[node03\n192.168.1.53]
-    node4[node04\n192.168.1.54]
-    node5[node05\n192.168.1.55]
-    node6[node06\n192.168.1.56]
-    node7[node07\n192.168.1.57]
-    node8[node08\n192.168.1.58]
-    node9[node09\n192.168.1.59]
+    master[master01\n10.0.0.50\nControl Plane]
+    node1[node01\n10.0.0.51]
+    node2[node02\n10.0.0.52]
+    node3[node03\n10.0.0.53]
+    node4[node04\n10.0.0.54]
+    node5[node05\n10.0.0.55]
+    node6[node06\n10.0.0.56]
+    node7[node07\n10.0.0.57]
+    node8[node08\n10.0.0.58]
+    node9[node09\n10.0.0.59]
 
     internet --> pfsense
     pfsense --> switch
@@ -63,7 +63,7 @@ graph TD
 
 ```mermaid
 graph TD
-    rancher[Rancher UI\nrancher.192.168.1.50.sslip.io]
+    rancher[Rancher UI\nrancher.example.com]
     master[master01\nK3s Server\nControl Plane + etcd]
     certmgr[cert-manager\ncattle-system]
     unbound[Unbound DNS\nkube-system]
@@ -84,7 +84,7 @@ graph TD
 ```mermaid
 flowchart LR
     A[Discover nodes\nvia SSH scan] --> B[Update Ansible\ninventory]
-    B --> C[static-ips.yml\nAssign 192.168.1.50-59\nvia nmcli]
+    B -->     C[static-ips.yml\nAssign static IPs\nvia nmcli]
     C --> D[k3s-cluster.yml\nInstall K3s server\non master01]
     D --> E[Join node01-09\nas K3s agents]
     E --> F[Deploy Unbound\n+ CoreDNS config]
