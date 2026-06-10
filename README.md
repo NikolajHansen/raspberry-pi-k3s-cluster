@@ -144,7 +144,7 @@ ansible-playbook -i inventory/inventory.yml playbooks/helm-apps.yml -e @~/creden
 
 Once the cluster is up, Rancher is available at:
 
-**https://rancher.192.168.1.50.sslip.io**
+**https://rancher.example.com**
 
 The bootstrap password is defined in your local `~/credentials.yml` (`rancher_bootstrap_password`).
 
