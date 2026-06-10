@@ -1,0 +1,15 @@
+---
+- name: Deploy Lyrion Music Server
+  hosts: masters
+  become: yes
+  vars:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  tasks:
+    - name: Render Lyrion manifest
+      template:
+        src: ../../k8s/lyrion.yaml.j2
+        dest: /tmp/lyrion.yaml
+
+    - name: Apply Lyrion manifest
+      command: kubectl --kubeconfig {{ kubeconfig }} apply -f /tmp/lyrion.yaml
+      changed_when: true

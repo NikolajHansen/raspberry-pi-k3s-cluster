@@ -1,0 +1,26 @@
+# Site-specific variables for the k3s cluster.
+# Copy this to ~/k3s-site.yml and fill in your real values.
+# This file is loaded automatically by ~/bin/k3s-ansible.
+
+# Networking
+master_ip: 10.0.0.50
+lan_subnet: 10.0.0.0/24
+dns_internal_ip: 10.0.0.21   # Authoritative DNS for internal domains (e.g. tinydns/djbdns)
+dns_external_ip: 10.0.0.1    # Upstream DNS for external queries (e.g. router/pfSense)
+
+# Domains
+internal_domain: example.com
+secondary_domain: example.org
+
+# NFS
+nfs_server: nfs.example.com
+nfs_music_path: /data/media
+
+# Service hostnames
+rancher_hostname: rancher.example.com
+lyrion_hostname: lyrion.example.com
+
+# MetalLB VIPs
+metallb_pool: "10.0.0.60-10.0.0.70"
+lyrion_vip: 10.0.0.60
+traefik_vip: 10.0.0.61

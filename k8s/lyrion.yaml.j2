@@ -1,0 +1,140 @@
+# Lyrion Music Server
+#
+# NFS music library: {{ nfs_server }}:{{ nfs_music_path }} (NFSv3 only — ZFS NFS)
+# Music accessible at /media/music inside container
+# MetalLB LoadBalancer VIP: {{ lyrion_vip }} (pool: {{ metallb_pool }})
+# Web UI: http://{{ lyrion_hostname }}:9000
+# Squeezebox protocol: TCP/UDP 3483
+#
+# Note: /config uses emptyDir — Lyrion config is lost on pod restart.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lyrion
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: lyrion-media-pv
+spec:
+  storageClassName: ""
+  accessModes:
+    - ReadOnlyMany
+  capacity:
+    storage: 100Gi
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - vers=3
+  nfs:
+    server: {{ nfs_server }}
+    path: {{ nfs_music_path }}
+    readOnly: true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lyrion-media
+  namespace: lyrion
+spec:
+  storageClassName: ""
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 100Gi
+  volumeName: lyrion-media-pv
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lyrion
+  namespace: lyrion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lyrion
+  template:
+    metadata:
+      labels:
+        app: lyrion
+    spec:
+      containers:
+        - name: lyrion
+          image: lmscommunity/lyrionmusicserver:latest
+          env:
+            - name: TZ
+              value: Europe/Copenhagen
+            - name: MUSIC_DIR
+              value: /media/music
+          ports:
+            - name: web
+              containerPort: 9000
+              protocol: TCP
+            - name: cli
+              containerPort: 9090
+              protocol: TCP
+            - name: slimproto-tcp
+              containerPort: 3483
+              protocol: TCP
+            - name: slimproto-udp
+              containerPort: 3483
+              protocol: UDP
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: music
+              mountPath: /media
+      volumes:
+        - name: config
+          emptyDir: {}
+        - name: music
+          persistentVolumeClaim:
+            claimName: lyrion-media
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lyrion
+  namespace: lyrion
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ lyrion_vip }}
+  selector:
+    app: lyrion
+  ports:
+    - name: web
+      port: 9000
+      targetPort: 9000
+      protocol: TCP
+    - name: cli
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+    - name: slimproto-tcp
+      port: 3483
+      targetPort: 3483
+      protocol: TCP
+    - name: slimproto-udp
+      port: 3483
+      targetPort: 3483
+      protocol: UDP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lyrion
+  namespace: lyrion
+spec:
+  rules:
+    - host: {{ lyrion_hostname }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: lyrion
+                port:
+                  number: 9000

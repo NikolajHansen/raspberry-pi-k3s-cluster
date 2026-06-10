@@ -12,31 +12,19 @@ data:
       do-ip4: yes
       do-udp: yes
       do-tcp: yes
-      # Allow queries from cluster and LAN subnets
       access-control: 127.0.0.0/8 allow
-      access-control: 192.168.1.0/24 allow
-      # Privacy
+      access-control: {{ lan_subnet }} allow
       hide-identity: yes
       hide-version: yes
-      # Performance
       cache-min-ttl: 300
       cache-max-ttl: 86400
       prefetch: yes
 
-    # Local DNS records for the cluster nodes
-    local-zone: "barnabas.dk." transparent
-    local-data: "master01.barnabas.dk. IN A 192.168.1.50"
-    local-data: "node01.barnabas.dk. IN A 192.168.1.51"
-    local-data: "node02.barnabas.dk. IN A 192.168.1.52"
-    local-data: "node03.barnabas.dk. IN A 192.168.1.53"
-    local-data: "node04.barnabas.dk. IN A 192.168.1.54"
-    local-data: "node05.barnabas.dk. IN A 192.168.1.55"
-    local-data: "node06.barnabas.dk. IN A 192.168.1.56"
-    local-data: "node07.barnabas.dk. IN A 192.168.1.57"
-    local-data: "node08.barnabas.dk. IN A 192.168.1.58"
-    local-data: "node09.barnabas.dk. IN A 192.168.1.59"
+    local-zone: "{{ internal_domain }}." transparent
+{% for host in groups['all'] | sort %}
+    local-data: "{{ host }}.{{ internal_domain }}. IN A {{ hostvars[host]['ansible_host'] }}"
+{% endfor %}
 
-    # Forward everything else to upstream resolvers
     forward-zone:
       name: "."
       forward-addr: 1.1.1.1
@@ -54,7 +42,7 @@ spec:
   hostNetwork: true
   dnsPolicy: ClusterFirstWithHostNet
   nodeSelector:
-    kubernetes.io/hostname: master01
+    kubernetes.io/hostname: master01.{{ internal_domain }}
   containers:
   - name: unbound
     image: cjuniorfox/unbound:1.20.0

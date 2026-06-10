@@ -4,19 +4,13 @@ metadata:
   name: coredns-custom
   namespace: kube-system
 data:
-  # Forward internal domains to Unbound on the master node
+  # Forward internal domains to authoritative DNS (djbdns/tinydns).
+  # NOTE: Do NOT add a .:53 server block here — CoreDNS already defines one in
+  # its main Corefile. A duplicate .:53 will crash CoreDNS on startup.
+  # External DNS forwarding is patched directly into the main Corefile.
   internal.server: |
-    barnabas.dk:53 hsys.dk:53 168.192.in-addr.arpa:53 {
+    {{ internal_domain }}:53 {{ secondary_domain }}:53 {{ lan_subnet | regex_replace('\\.0/.*', '') }}.in-addr.arpa:53 {
         errors
         cache 30
-        forward . {{ unbound_ip }}
-    }
-  # Forward all other external DNS to Unbound as well
-  external.server: |
-    .:53 {
-        errors
-        cache 30
-        forward . {{ unbound_ip }} {
-            except cluster.local in-addr.arpa ip6.arpa
-        }
+        forward . {{ dns_internal_ip }}
     }

@@ -31,9 +31,14 @@
   hosts: masters
   become: yes
   vars:
-    master_ip: 192.168.1.50
-    unbound_ip: 192.168.1.50
     kubeconfig: /etc/rancher/k3s/k3s.yaml
+    # Defaults — override via ~/k3s-site.yml (loaded by k3s-ansible wrapper)
+    master_ip: "{{ hostvars[groups['masters'][0]]['ansible_host'] }}"
+    dns_internal_ip: 10.0.0.21
+    dns_external_ip: 10.0.0.1
+    internal_domain: example.com
+    secondary_domain: example.org
+    lan_subnet: 10.0.0.0/24
   tasks:
     - name: Install K3s server
       shell: >
@@ -84,6 +89,21 @@
       register: coredns_template
       notify: Apply CoreDNS config
 
+    - name: Patch CoreDNS Corefile to forward external queries to pfSense
+      # The default Corefile uses /etc/resolv.conf which may point to systemd-resolved
+      # stub (127.0.0.53) — unreachable from pods. Override with explicit upstream.
+      shell: |
+        kubectl --kubeconfig {{ kubeconfig }} get cm coredns -n kube-system -o json | \
+        python3 -c "
+        import sys, json
+        cm = json.load(sys.stdin)
+        cm['data']['Corefile'] = cm['data']['Corefile'].replace('forward . /etc/resolv.conf', 'forward . {{ dns_external_ip }}')
+        print(json.dumps(cm))
+        " | kubectl --kubeconfig {{ kubeconfig }} apply -f -
+      register: coredns_patch
+      changed_when: "'configured' in coredns_patch.stdout"
+      notify: Restart CoreDNS
+
   handlers:
     - name: Apply Unbound manifest
       command: kubectl --kubeconfig {{ kubeconfig }} apply -f /tmp/unbound.yaml
@@ -120,9 +140,10 @@
   hosts: masters
   become: yes
   vars:
-    master_ip: 192.168.1.50
+    master_ip: "{{ hostvars[groups['masters'][0]]['ansible_host'] }}"
     kubeconfig: /etc/rancher/k3s/k3s.yaml
-    rancher_hostname: "rancher.barnabas.dk"
+    # Defaults — override via ~/k3s-site.yml (loaded by k3s-ansible wrapper)
+    rancher_hostname: "rancher.example.com"
     rancher_bootstrap_password: "{{ lookup('community.general.bitwarden', 'k3s-cluster', field='rancher_bootstrap_password') }}"
   tasks:
     - name: Install Helm
