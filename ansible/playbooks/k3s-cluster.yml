@@ -123,6 +123,7 @@
     master_ip: 192.168.1.50
     kubeconfig: /etc/rancher/k3s/k3s.yaml
     rancher_hostname: "rancher.barnabas.dk"
+    rancher_bootstrap_password: "{{ lookup('community.general.bitwarden', 'k3s-cluster', field='rancher_bootstrap_password') }}"
   tasks:
     - name: Install Helm
       shell: curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
