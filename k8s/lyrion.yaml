@@ -1,0 +1,219 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: PersistentVolume
+  metadata:
+    annotations:
+        {"apiVersion":"v1","kind":"PersistentVolume","metadata":{"annotations":{},"name":"lyrion-media-pv"},"spec":{"accessModes":["ReadOnlyMany"],"capacity":{"storage":"100Gi"},"mountOptions":["vers=3"],"nfs":{"path":"/greenlake/media","readOnly":true,"server":"atlas.barnabas.dk"},"persistentVolumeReclaimPolicy":"Retain","storageClassName":""}}
+      pv.kubernetes.io/bound-by-controller: "yes"
+    finalizers:
+    - kubernetes.io/pv-protection
+    name: lyrion-media-pv
+  spec:
+    accessModes:
+    - ReadOnlyMany
+    capacity:
+      storage: 100Gi
+    claimRef:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      name: lyrion-media
+      namespace: lyrion
+    mountOptions:
+    - vers=3
+    nfs:
+      path: /greenlake/media
+      readOnly: true
+      server: atlas.barnabas.dk
+    persistentVolumeReclaimPolicy: Retain
+    volumeMode: Filesystem
+  status:
+    lastPhaseTransitionTime: "2026-06-10T21:31:50Z"
+    phase: Bound
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+        {"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"annotations":{},"name":"lyrion-media","namespace":"lyrion"},"spec":{"accessModes":["ReadOnlyMany"],"resources":{"requests":{"storage":"100Gi"}},"storageClassName":"","volumeName":"lyrion-media-pv"}}
+      pv.kubernetes.io/bind-completed: "yes"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    name: lyrion-media
+    namespace: lyrion
+  spec:
+    accessModes:
+    - ReadOnlyMany
+    resources:
+      requests:
+        storage: 100Gi
+    storageClassName: ""
+    volumeMode: Filesystem
+    volumeName: lyrion-media-pv
+  status:
+    accessModes:
+    - ReadOnlyMany
+    capacity:
+      storage: 100Gi
+    phase: Bound
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "3"
+      field.cattle.io/publicEndpoints: '[{"addresses":["192.168.1.50","192.168.1.51","192.168.1.52","192.168.1.53","192.168.1.54","192.168.1.55","192.168.1.56","192.168.1.57","192.168.1.58","192.168.1.59"],"port":80,"protocol":"HTTP","serviceName":"lyrion:lyrion","ingressName":"lyrion:lyrion","hostname":"lyrion.barnabas.dk","path":"/","allNodes":false},{"nodeName":":node08.barnabas.dk","addresses":["192.168.1.58"],"port":9000,"protocol":"TCP","podName":"lyrion:lyrion-6645b4d6d6-n5ft8","allNodes":false},{"nodeName":":node08.barnabas.dk","addresses":["192.168.1.58"],"port":9090,"protocol":"TCP","podName":"lyrion:lyrion-6645b4d6d6-n5ft8","allNodes":false},{"nodeName":":node08.barnabas.dk","addresses":["192.168.1.58"],"port":3483,"protocol":"TCP","podName":"lyrion:lyrion-6645b4d6d6-n5ft8","allNodes":false},{"nodeName":":node08.barnabas.dk","addresses":["192.168.1.58"],"port":3483,"protocol":"UDP","podName":"lyrion:lyrion-6645b4d6d6-n5ft8","allNodes":false}]'
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"name":"lyrion","namespace":"lyrion"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"lyrion"}},"template":{"metadata":{"labels":{"app":"lyrion"}},"spec":{"containers":[{"env":[{"name":"TZ","value":"Europe/Copenhagen"}],"image":"lmscommunity/lyrionmusicserver:latest","name":"lyrion","ports":[{"containerPort":9000,"name":"web"},{"containerPort":9090,"name":"cli"},{"containerPort":3483,"name":"slimproto-tcp","protocol":"TCP"},{"containerPort":3483,"name":"slimproto-udp","protocol":"UDP"}],"volumeMounts":[{"mountPath":"/config","name":"config"},{"mountPath":"/music","name":"music","readOnly":true}]}],"volumes":[{"emptyDir":{},"name":"config"},{"name":"music","persistentVolumeClaim":{"claimName":"lyrion-media"}}]}}}}
+    name: lyrion
+    namespace: lyrion
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: lyrion
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        labels:
+          app: lyrion
+      spec:
+        containers:
+        - env:
+          - name: TZ
+            value: Europe/Copenhagen
+          - name: MUSIC_DIR
+            value: /media/music
+          image: lmscommunity/lyrionmusicserver:latest
+          imagePullPolicy: Always
+          name: lyrion
+          ports:
+          - containerPort: 9000
+            name: web
+            protocol: TCP
+          - containerPort: 9090
+            name: cli
+            protocol: TCP
+          - containerPort: 3483
+            name: slimproto-tcp
+            protocol: TCP
+          - containerPort: 3483
+            name: slimproto-udp
+            protocol: UDP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /config
+            name: config
+          - mountPath: /media
+            name: music
+        dnsPolicy: ClusterFirstWithHostNet
+        hostNetwork: true
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - emptyDir: {}
+          name: config
+        - name: music
+          persistentVolumeClaim:
+            claimName: lyrion-media
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-10T21:32:06Z"
+      lastUpdateTime: "2026-06-10T21:32:06Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-10T21:22:30Z"
+      lastUpdateTime: "2026-06-10T21:56:54Z"
+      message: ReplicaSet "lyrion-6645b4d6d6" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 5
+    readyReplicas: 1
+    replicas: 1
+    terminatingReplicas: 1
+    updatedReplicas: 1
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"name":"lyrion","namespace":"lyrion"},"spec":{"ports":[{"name":"web","port":9000,"targetPort":9000},{"name":"cli","port":9090,"targetPort":9090},{"name":"slimproto-tcp","port":3483,"protocol":"TCP","targetPort":3483},{"name":"slimproto-udp","port":3483,"protocol":"UDP","targetPort":3483}],"selector":{"app":"lyrion"}}}
+    name: lyrion
+    namespace: lyrion
+  spec:
+    clusterIP: 10.43.91.56
+    clusterIPs:
+    - 10.43.91.56
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: web
+      port: 9000
+      protocol: TCP
+      targetPort: 9000
+    - name: cli
+      port: 9090
+      protocol: TCP
+      targetPort: 9090
+    - name: slimproto-tcp
+      port: 3483
+      protocol: TCP
+      targetPort: 3483
+    - name: slimproto-udp
+      port: 3483
+      protocol: UDP
+      targetPort: 3483
+    selector:
+      app: lyrion
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      field.cattle.io/publicEndpoints: '[{"addresses":["192.168.1.50","192.168.1.51","192.168.1.52","192.168.1.53","192.168.1.54","192.168.1.55","192.168.1.56","192.168.1.57","192.168.1.58","192.168.1.59"],"port":80,"protocol":"HTTP","serviceName":"lyrion:lyrion","ingressName":"lyrion:lyrion","hostname":"lyrion.barnabas.dk","path":"/","allNodes":false}]'
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{},"name":"lyrion","namespace":"lyrion"},"spec":{"rules":[{"host":"lyrion.barnabas.dk","http":{"paths":[{"backend":{"service":{"name":"lyrion","port":{"number":9000}}},"path":"/","pathType":"Prefix"}]}}]}}
+    name: lyrion
+    namespace: lyrion
+  spec:
+    ingressClassName: traefik
+    rules:
+    - host: lyrion.barnabas.dk
+      http:
+        paths:
+        - backend:
+            service:
+              name: lyrion
+              port:
+                number: 9000
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer:
+      ingress:
+      - ip: 192.168.1.50
+      - ip: 192.168.1.51
+      - ip: 192.168.1.52
+      - ip: 192.168.1.53
+      - ip: 192.168.1.54
+      - ip: 192.168.1.55
+      - ip: 192.168.1.56
+      - ip: 192.168.1.57
+      - ip: 192.168.1.58
+      - ip: 192.168.1.59
+kind: List
+metadata:
