@@ -56,6 +56,7 @@ spec:
     storage: 10Gi
   persistentVolumeReclaimPolicy: Retain
   mountOptions:
+    - nolock
     - fsc
   nfs:
     server: {{ nfs_server }}
