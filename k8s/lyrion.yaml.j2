@@ -96,6 +96,8 @@ spec:
           image: lmscommunity/lyrionmusicserver:latest
           command:
             - /usr/bin/perl
+            - -I/lms/CPAN
+            - -I/lms/lib
             - -MDBI
             - -e
             - |
