@@ -99,7 +99,7 @@ spec:
             - -c
             - |
               apk add --quiet sqlite && \
-              for db in /config/prefs/*.db; do
+              for db in /config/prefs/*.db /config/cache/*.db; do
                 [ -f "$db" ] && sqlite3 "$db" "PRAGMA journal_mode=DELETE;" && echo "Fixed WAL: $db"
               done; true
           volumeMounts:
