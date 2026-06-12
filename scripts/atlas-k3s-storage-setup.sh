@@ -53,23 +53,15 @@ for app in $apps; do
   fi
 done
 
-# Add NFS export for entire k3s tree (only if not already present)
-if ! grep -q "k3s app storage" /etc/exports; then
-  echo "" >> /etc/exports
-  echo "# k3s app storage - generated $(date +%Y-%m-%d)" >> /etc/exports
-  printf "/%s/k3s\t-alldirs -maproot=root\t%s\n" "${POOL}" "${K3S_SUBNET}" >> /etc/exports
-  echo "==> /etc/exports updated"
+# Enable NFS export via ZFS sharenfs property (same approach as greenlake/media)
+# This is the correct method on FreeBSD — do not mix with /etc/exports
+current_sharenfs=$(zfs get -H -o value sharenfs ${POOL}/k3s)
+if [ "$current_sharenfs" = "off" ]; then
+  echo "==> Setting sharenfs on ${POOL}/k3s"
+  zfs set sharenfs="-alldirs -maproot=root -network ${K3S_SUBNET}" ${POOL}/k3s
 else
-  echo "==> /etc/exports already contains k3s entry, skipping"
+  echo "==> sharenfs already set on ${POOL}/k3s, skipping"
 fi
-
-echo ""
-echo "==> Current /etc/exports:"
-cat /etc/exports
-
-echo ""
-echo "==> Reloading NFS exports"
-service nfsd restart
 
 echo ""
 echo "==> Done. Verify with:"
