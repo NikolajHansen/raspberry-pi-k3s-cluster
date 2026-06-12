@@ -25,6 +25,10 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   mountOptions:
     - vers=3
+    - noatime
+    - nodiratime
+    - rsize=131072
+    - wsize=131072
   nfs:
     server: {{ nfs_server }}
     path: {{ nfs_music_path }}
