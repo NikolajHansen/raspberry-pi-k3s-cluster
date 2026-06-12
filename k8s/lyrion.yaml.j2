@@ -2,11 +2,10 @@
 #
 # NFS music library: {{ nfs_server }}:{{ nfs_music_path }} (NFSv3 only — ZFS NFS)
 # Music accessible at /media/music inside container
+# NFS config/db/artwork: {{ nfs_server }}:{{ nfs_k3s_path }}/lyrion → /config
 # MetalLB LoadBalancer VIP: {{ lyrion_vip }} (pool: {{ metallb_pool }})
 # Web UI: http://{{ lyrion_hostname }}:9000
 # Squeezebox protocol: TCP/UDP 3483
-#
-# Note: /config uses emptyDir — Lyrion config is lost on pod restart.
 ---
 apiVersion: v1
 kind: Namespace
@@ -44,6 +43,35 @@ spec:
     requests:
       storage: 100Gi
   volumeName: lyrion-media-pv
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: lyrion-config-pv
+spec:
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 10Gi
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: {{ nfs_server }}
+    path: {{ nfs_k3s_path }}/lyrion
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lyrion-config
+  namespace: lyrion
+spec:
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: lyrion-config-pv
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -88,7 +116,8 @@ spec:
               mountPath: /media
       volumes:
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: lyrion-config
         - name: music
           persistentVolumeClaim:
             claimName: lyrion-media
