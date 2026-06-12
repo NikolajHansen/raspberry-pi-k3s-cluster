@@ -98,9 +98,15 @@ spec:
             - sh
             - -c
             - |
-              apk add --quiet sqlite && \
-              for db in /config/prefs/*.db; do
-                [ -f "$db" ] && sqlite3 "$db" "PRAGMA journal_mode=DELETE;" 2>/dev/null && echo "Fixed WAL: $db" || echo "Skipped: $db"
+              apk add --quiet sqlite file && \
+              for db in /config/prefs/*.db /config/cache/*.db; do
+                [ -f "$db" ] || continue
+                if file "$db" | grep -q SQLite; then
+                  rm -f "${db}-wal" "${db}-shm"
+                  sqlite3 "$db" "PRAGMA journal_mode=DELETE;" && echo "Fixed: $db"
+                else
+                  rm -f "$db" "${db}-wal" "${db}-shm" && echo "Removed corrupt: $db"
+                fi
               done; true
           volumeMounts:
             - name: config
@@ -131,16 +137,12 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: cache
-              mountPath: /config/cache
             - name: music
               mountPath: /media
       volumes:
         - name: config
           persistentVolumeClaim:
             claimName: lyrion-config
-        - name: cache
-          emptyDir: {}
         - name: music
           persistentVolumeClaim:
             claimName: lyrion-media
