@@ -93,20 +93,15 @@ spec:
     spec:
       initContainers:
         - name: fix-sqlite-wal
-          image: lmscommunity/lyrionmusicserver:latest
+          image: alpine:latest
           command:
-            - /usr/bin/perl
-            - -I/lms/CPAN
-            - -I/lms/lib
-            - -MDBI
-            - -e
+            - sh
+            - -c
             - |
-              for my $db (glob("/config/prefs/*.db")) {
-                my $dbh = DBI->connect("dbi:SQLite:dbname=$db","","",{RaiseError=>0}) or next;
-                $dbh->do("PRAGMA journal_mode=DELETE");
-                $dbh->disconnect;
-                print "Disabled WAL on $db\n";
-              }
+              apk add --quiet sqlite && \
+              for db in /config/prefs/*.db; do
+                [ -f "$db" ] && sqlite3 "$db" "PRAGMA journal_mode=DELETE;" && echo "Fixed WAL: $db"
+              done; true
           volumeMounts:
             - name: config
               mountPath: /config
