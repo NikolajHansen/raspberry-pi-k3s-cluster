@@ -10,7 +10,7 @@ Data follows the **pod, not the node** — pods can be rescheduled freely betwee
 greenlake/
 ├── media/          # Music library (read-only, shared with Lyrion)
 └── k3s/
-    └── lyrion/     # Lyrion config, SQLite database, artwork cache
+    └── lyrion/     # Lyrion config, SQLite databases, plugins, artwork cache
 ```
 
 Each application under `greenlake/k3s/` gets its own ZFS dataset, enabling:
@@ -20,28 +20,41 @@ Each application under `greenlake/k3s/` gets its own ZFS dataset, enabling:
 
 ## NFS export
 
-A single export covers the entire k3s application tree, accessible to all cluster nodes:
+Exports are configured via the ZFS `sharenfs` property — **not** `/etc/exports`. Mixing the two methods causes exports to be silently ignored on FreeBSD.
 
-```
-/greenlake/k3s   -alldirs -maproot=root   10.0.0.0/24
+```bash
+# k3s app storage (read-write, all cluster nodes)
+zfs set sharenfs="-alldirs -maproot=root -network 10.0.0.0/24" greenlake/k3s
+
+# Music library (read-only, set via sharenfs on dataset)
+zfs set sharenfs="-mapall=media:media -network 10.0.0.0/24" greenlake/media
 ```
 
-The music library is exported separately (read-only):
+Verify with:
+```bash
+showmount -e localhost
+```
 
-```
-/greenlake/media   -maproot=root   10.0.0.0/24
-```
+## SQLite on NFS
+
+LMS uses SQLite with WAL (Write-Ahead Logging) by default. WAL requires shared memory files (`.db-wal`, `.db-shm`) which do not work reliably over NFS. The NFS PV for `/config` uses `nolock` mount option, and an init container converts all databases to `DELETE` journal mode before LMS starts.
+
+## NFS mount options
+
+| Volume | Options |
+|---|---|
+| `/config` (lyrion-config-pv) | `nolock`, `fsc` |
+| `/media` (lyrion-media-pv) | `vers=3`, `noatime`, `nodiratime`, `rsize=131072`, `wsize=131072` |
 
 ## Setup
 
 Run once as root on `atlas.example.com` to create datasets and configure NFS exports:
 
 ```bash
-su -
-sh scripts/atlas-k3s-storage-setup.sh
+sudo sh scripts/atlas-k3s-storage-setup.sh
 ```
 
-The script is idempotent — existing datasets and export entries are skipped.
+The script is idempotent — existing datasets and sharenfs properties are skipped.
 
 To add a new application, append it to the `apps` list in the script and re-run.
 
