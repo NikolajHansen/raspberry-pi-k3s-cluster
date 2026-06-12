@@ -55,6 +55,8 @@ spec:
   capacity:
     storage: 10Gi
   persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - fsc
   nfs:
     server: {{ nfs_server }}
     path: {{ nfs_k3s_path }}/lyrion
