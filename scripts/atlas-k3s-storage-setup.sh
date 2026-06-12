@@ -1,8 +1,14 @@
 #!/bin/sh
-# Setup per-node NFS storage for k3s cluster on atlas.barnabas.dk
+# Setup app-oriented NFS storage for k3s cluster on atlas.barnabas.dk
 #
-# Creates a ZFS dataset per node under greenlake/k3s/ with individual
-# NFS exports restricted to each node's IP.
+# Creates a ZFS dataset per application under greenlake/k3s/ with a
+# single NFS export for the entire k3s subnet (192.168.1.0/24).
+#
+# Data follows the pod, not the node — pods can move freely between
+# nodes and still access their persistent data.
+#
+# To add a new application, add it to the `apps` list below and re-run.
+# The script is idempotent — existing datasets and exports are skipped.
 #
 # Usage (run as root on atlas.barnabas.dk):
 #   su -
@@ -14,25 +20,19 @@
 set -e
 
 POOL="greenlake"
-QUOTA="50G"
+K3S_SUBNET="192.168.1.0/24"
+
+# Applications to create datasets for.
+# Add new apps here as needed — one per line.
+apps="
+lyrion
+"
 
 # Verify running as root
 if [ "$(id -u)" -ne 0 ]; then
   echo "ERROR: This script must be run as root (su - or sudo)"
   exit 1
 fi
-
-# Node name -> IP mapping (master01=.50, node01-09=.51-.59)
-nodes="master01:192.168.1.50
-node01:192.168.1.51
-node02:192.168.1.52
-node03:192.168.1.53
-node04:192.168.1.54
-node05:192.168.1.55
-node06:192.168.1.56
-node07:192.168.1.57
-node08:192.168.1.58
-node09:192.168.1.59"
 
 # Create parent dataset if it doesn't exist
 if ! zfs list ${POOL}/k3s > /dev/null 2>&1; then
@@ -42,33 +42,25 @@ else
   echo "==> ${POOL}/k3s already exists, skipping"
 fi
 
-# Create per-node datasets
-for entry in $nodes; do
-  node=$(echo "$entry" | cut -d: -f1)
-  ip=$(echo "$entry" | cut -d: -f2)
-  dataset="${POOL}/k3s/${node}"
-
+# Create per-app datasets
+for app in $apps; do
+  dataset="${POOL}/k3s/${app}"
   if ! zfs list ${dataset} > /dev/null 2>&1; then
-    echo "==> Creating ${dataset} (quota: ${QUOTA}, export to ${ip})"
+    echo "==> Creating ${dataset}"
     zfs create ${dataset}
-    zfs set quota=${QUOTA} ${dataset}
   else
     echo "==> ${dataset} already exists, skipping"
   fi
 done
 
-# Add exports to /etc/exports (only if not already present)
-if ! grep -q "k3s node storage" /etc/exports; then
+# Add NFS export for entire k3s tree (only if not already present)
+if ! grep -q "k3s app storage" /etc/exports; then
   echo "" >> /etc/exports
-  echo "# k3s node storage - generated $(date +%Y-%m-%d)" >> /etc/exports
-  for entry in $nodes; do
-    node=$(echo "$entry" | cut -d: -f1)
-    ip=$(echo "$entry" | cut -d: -f2)
-    printf "/%s/k3s/%s\t-maproot=root\t%s\n" "${POOL}" "${node}" "${ip}" >> /etc/exports
-  done
+  echo "# k3s app storage - generated $(date +%Y-%m-%d)" >> /etc/exports
+  printf "/%s/k3s\t-alldirs -maproot=root\t%s\n" "${POOL}" "${K3S_SUBNET}" >> /etc/exports
   echo "==> /etc/exports updated"
 else
-  echo "==> /etc/exports already contains k3s entries, skipping"
+  echo "==> /etc/exports already contains k3s entry, skipping"
 fi
 
 echo ""
