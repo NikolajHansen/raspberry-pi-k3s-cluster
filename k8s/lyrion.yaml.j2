@@ -91,6 +91,7 @@ spec:
       labels:
         app: lyrion
     spec:
+      hostNetwork: true
       initContainers:
         - name: fix-sqlite-wal
           image: alpine:latest
