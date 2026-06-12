@@ -91,6 +91,23 @@ spec:
       labels:
         app: lyrion
     spec:
+      initContainers:
+        - name: fix-sqlite-wal
+          image: lmscommunity/lyrionmusicserver:latest
+          command:
+            - /usr/bin/perl
+            - -MDBI
+            - -e
+            - |
+              for my $db (glob("/config/prefs/*.db")) {
+                my $dbh = DBI->connect("dbi:SQLite:dbname=$db","","",{RaiseError=>0}) or next;
+                $dbh->do("PRAGMA journal_mode=DELETE");
+                $dbh->disconnect;
+                print "Disabled WAL on $db\n";
+              }
+          volumeMounts:
+            - name: config
+              mountPath: /config
       containers:
         - name: lyrion
           image: lmscommunity/lyrionmusicserver:latest
