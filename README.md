@@ -111,10 +111,43 @@ flowchart LR
 │       └── coredns-custom.yaml.j2   # CoreDNS custom ConfigMap
 ├── k8s/
 │   └── lyrion.yaml                  # Lyrion Music Server manifests (PV/PVC, Deployment, Service, Ingress)
+├── scripts/
+│   └── atlas-k3s-storage-setup.sh  # NFS storage setup on atlas.example.com (run as root)
 └── README.md
 ```
 
-## Usage
+## Persistent Storage
+
+Application data is stored on `atlas.example.com` (ZFS pool: `greenlake`) and exported via NFS to the k3s subnet. Data follows the pod — not the node — so pods can be rescheduled freely without data loss.
+
+### ZFS layout
+
+```
+greenlake/k3s/
+└── lyrion/          # Lyrion config, SQLite database, artwork cache
+```
+
+Each application gets its own ZFS dataset, allowing independent snapshots, quotas, and backups per application.
+
+### NFS export
+
+A single export covers the entire k3s application tree:
+
+```
+/greenlake/k3s   -alldirs -maproot=root   10.0.0.0/24
+```
+
+### Setup
+
+Run once as root on `atlas.example.com` to create datasets and configure NFS exports:
+
+```bash
+su -
+sh scripts/atlas-k3s-storage-setup.sh
+```
+
+The script is idempotent. To add a new application, append it to the `apps` list in the script and re-run.
+
 
 ### Prerequisites
 
@@ -192,14 +225,15 @@ Lyrion (formerly Logitech Media Server) streams music to Squeezebox hardware pla
 
 - **Web UI**: http://lyrion.example.com:9000
 - **Squeezebox protocol**: TCP/UDP 3483 (UDP broadcast for player discovery)
-- **Music library**: NFS mount from `nfs.example.com:/greenlake/media` (read-only, NFSv3)
+- **Music library**: NFS mount from `atlas.example.com:/greenlake/media` (read-only, NFSv3)
+- **Config/database/artwork**: NFS PVC from `atlas.example.com:/greenlake/k3s/lyrion` (persistent across pod restarts)
 - **VIP**: `10.0.0.60` via MetalLB — stable across pod rescheduling
 
-> **Note**: Pod config (`/config`) uses `emptyDir` — Lyrion settings are lost on pod restart.
-> A future improvement is to add a persistent PVC for `/config`.
+> **Note**: Pod config (`/config`) will be mounted from NFS (`greenlake/k3s/lyrion`) — see Persistent Storage section above.
 
 ## Roadmap
 
 - [ ] Dedicated cluster VLAN with pfSense routing
 - [ ] Move cluster to isolated `10.1.10.x` network
-- [ ] Persistent storage for Lyrion config (replace emptyDir with PVC)
+- [x] Persistent storage for Lyrion config (NFS PVC on atlas — pending lyrion.yaml.j2 update)
+- [ ] Update lyrion.yaml.j2 to mount /config from NFS PVC
