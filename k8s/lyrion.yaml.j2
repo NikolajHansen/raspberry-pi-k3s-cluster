@@ -60,7 +60,12 @@ spec:
     storage: 10Gi
   persistentVolumeReclaimPolicy: Retain
   mountOptions:
-    - nolock
+    - vers=4
+    - hard
+    - noatime
+    - nodiratime
+    - rsize=131072
+    - wsize=131072
     - fsc
   nfs:
     server: {{ nfs_server }}
@@ -104,11 +109,11 @@ spec:
             - -c
             - |
               apk add --quiet sqlite file
-              for db in /config/prefs/*.db; do
+              for db in /config/prefs/*.db /config/cache/*.db; do
                 [ -f "$db" ] || continue
                 if file "$db" | grep -q SQLite; then
                   rm -f "${db}-wal" "${db}-shm"
-                  sqlite3 "$db" "PRAGMA journal_mode=DELETE;" && echo "Fixed: $db"
+                  echo "Cleaned WAL: $db"
                 else
                   rm -f "$db" "${db}-wal" "${db}-shm" && echo "Removed corrupt: $db"
                 fi
@@ -142,19 +147,12 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: cache
-              mountPath: /config/cache
-            - name: config
-              mountPath: /config/cache/InstalledPlugins
-              subPath: cache/InstalledPlugins
             - name: music
               mountPath: /media
       volumes:
         - name: config
           persistentVolumeClaim:
             claimName: lyrion-config
-        - name: cache
-          emptyDir: {}
         - name: music
           persistentVolumeClaim:
             claimName: lyrion-media
