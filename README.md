@@ -29,7 +29,6 @@ A 10-node Kubernetes cluster running on Raspberry Pi hardware, provisioned with 
 │   │   ├── botkube.yml              # Deploy Botkube Slack monitoring
 │   │   └── helm-apps.yml            # Deploy additional Helm chart applications
 │   └── templates/
-│       ├── unbound.yaml.j2          # Unbound DNS Kubernetes manifest
 │       └── coredns-custom.yaml.j2   # CoreDNS custom ConfigMap
 ├── docs/
 │   ├── architecture.md              # Hardware, software stack, network diagrams

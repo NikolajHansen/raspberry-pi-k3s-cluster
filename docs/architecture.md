@@ -19,8 +19,7 @@ All nodes run **Raspberry Pi OS Lite** (Debian 12 Bookworm, 64-bit, headless).
 | [Rancher](https://rancher.com) | Kubernetes management UI |
 | [cert-manager](https://cert-manager.io) | TLS certificate management |
 | [MetalLB](https://metallb.universe.tf) | Bare-metal load balancer (L2 mode) |
-| [Unbound](https://nlnetlabs.nl/projects/unbound/) | Internal DNS resolver (deployed in-cluster) |
-| [CoreDNS](https://coredns.io) | Kubernetes cluster DNS (k3s default, customised) |
+| [CoreDNS](https://coredns.io) | Kubernetes cluster DNS (k3s default, forwards to pfSense) |
 | [NetworkManager](https://networkmanager.dev) | Static IP management on nodes |
 | [Botkube](https://botkube.io) | Kubernetes event monitoring with Slack alerts |
 | [Lyrion Music Server](https://lyrion.org) | Music streaming server (Squeezebox compatible) |
@@ -72,7 +71,6 @@ graph TD
     end
 
     subgraph system_pods["System Pods — scheduled on workers"]
-        unbound[Unbound DNS\nkube-system]
         botkube[Botkube\nbotkube namespace]
     end
 
@@ -91,9 +89,9 @@ graph TD
     certmgr --> k3s
     metallb --> k3s
     coredns --> k3s
+    coredns -->|forwards external DNS| pfsense((pfSense\n10.0.0.1))
     k3s -->|schedules| system_pods
     k3s -->|schedules| workloads
-    coredns -->|forwards internal DNS| unbound
     metallb -->|announces VIP| lyrion
     lyrion -->|mounts| nfs
 ```

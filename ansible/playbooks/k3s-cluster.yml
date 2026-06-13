@@ -85,13 +85,6 @@
       delegate_to: localhost
       become: no
 
-    - name: Deploy Unbound DNS
-      template:
-        src: ../templates/unbound.yaml.j2
-        dest: /tmp/unbound.yaml
-      register: unbound_template
-      notify: Apply Unbound manifest
-
     - name: Deploy CoreDNS custom config
       template:
         src: ../templates/coredns-custom.yaml.j2
@@ -115,10 +108,6 @@
       notify: Restart CoreDNS
 
   handlers:
-    - name: Apply Unbound manifest
-      command: kubectl --kubeconfig {{ kubeconfig }} apply -f /tmp/unbound.yaml
-      changed_when: true
-
     - name: Apply CoreDNS config
       command: kubectl --kubeconfig {{ kubeconfig }} apply -f /tmp/coredns-custom.yaml
       changed_when: true
