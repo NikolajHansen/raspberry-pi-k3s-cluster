@@ -1,8 +1,8 @@
 # Lyrion Music Server
 #
-# NFS music library: {{ nfs_server }}:{{ nfs_music_path }} (NFSv3 only — ZFS NFS)
+# NFS music library: {{ nfs_server }}:{{ nfs_music_path }} (NFSv4)
 # Music accessible at /media/music inside container
-# NFS config/db/artwork: {{ nfs_server }}:{{ nfs_k3s_path }}/lyrion → /config
+# NFS config/db/artwork: {{ nfs_server }}:{{ nfs_k3s_v4_path }}/lyrion → /config
 # MetalLB LoadBalancer VIP: {{ lyrion_vip }} (pool: {{ metallb_pool }})
 # Web UI: http://{{ lyrion_hostname }}:9000
 # Squeezebox protocol: TCP/UDP 3483
@@ -24,14 +24,14 @@ spec:
     storage: 100Gi
   persistentVolumeReclaimPolicy: Retain
   mountOptions:
-    - vers=3
+    - vers=4
     - noatime
     - nodiratime
     - rsize=131072
     - wsize=131072
   nfs:
     server: {{ nfs_server }}
-    path: {{ nfs_music_path }}
+    path: /media
     readOnly: true
 ---
 apiVersion: v1
@@ -60,11 +60,14 @@ spec:
     storage: 10Gi
   persistentVolumeReclaimPolicy: Retain
   mountOptions:
-    - nolock
-    - fsc
+    - vers=4
+    - noatime
+    - nodiratime
+    - rsize=131072
+    - wsize=131072
   nfs:
     server: {{ nfs_server }}
-    path: {{ nfs_k3s_path }}/lyrion
+    path: {{ nfs_k3s_v4_path }}/lyrion
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -96,8 +99,37 @@ spec:
         app: lyrion
     spec:
       hostNetwork: true
+      terminationGracePeriodSeconds: 60
       initContainers:
-        - name: fix-prefs-wal
+        - name: check-mounts
+          image: alpine:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "Checking NFS mounts..."
+              # Retry for up to 60s in case NFS is slow to come up
+              for i in $(seq 1 30); do
+                if touch /config/.probe 2>/dev/null && rm /config/.probe 2>/dev/null; then
+                  echo "Config mount OK (writable)"
+                  CONFIG_OK=1
+                fi
+                if ls /media/music > /dev/null 2>&1; then
+                  echo "Media mount OK (readable)"
+                  MEDIA_OK=1
+                fi
+                [ -n "$CONFIG_OK" ] && [ -n "$MEDIA_OK" ] && exit 0
+                echo "Waiting for NFS mounts... ($i/30)"
+                sleep 2
+              done
+              echo "ERROR: NFS mounts not ready after 60s"
+              exit 1
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: music
+              mountPath: /media
+        - name: fix-sqlite-wal
           image: alpine:latest
           command:
             - sh
@@ -107,8 +139,9 @@ spec:
               for db in /config/prefs/*.db /config/cache/*.db; do
                 [ -f "$db" ] || continue
                 if file "$db" | grep -q SQLite; then
-                  rm -f "${db}-wal" "${db}-shm"
-                  echo "Cleaned WAL: $db"
+                  sqlite3 "$db" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null \
+                    && echo "Checkpointed WAL: $db" \
+                    || echo "Checkpoint skipped (will recover on startup): $db"
                 else
                   rm -f "$db" "${db}-wal" "${db}-shm" && echo "Removed corrupt: $db"
                 fi
@@ -139,6 +172,22 @@ spec:
             - name: slimproto-udp
               containerPort: 3483
               protocol: UDP
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    # Gracefully stop Lyrion via CLI
+                    echo "stopserver" | nc -w 5 localhost 9090 || true
+                    # Wait for the perl process to exit (up to 30s)
+                    for i in $(seq 1 30); do
+                      pgrep -f slimserver.pl || break
+                      sleep 1
+                    done
+                    # Flush filesystem buffers before NFS unmount
+                    sync
           volumeMounts:
             - name: config
               mountPath: /config
@@ -165,6 +214,10 @@ spec:
   ports:
     - name: web
       port: 80
+      targetPort: 9000
+      protocol: TCP
+    - name: rpc
+      port: 9000
       targetPort: 9000
       protocol: TCP
     - name: cli
