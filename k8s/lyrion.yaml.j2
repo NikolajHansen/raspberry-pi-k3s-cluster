@@ -60,17 +60,11 @@ spec:
     storage: 10Gi
   persistentVolumeReclaimPolicy: Retain
   mountOptions:
-    - vers=4
-    - sec=sys
-    - hard
-    - noatime
-    - nodiratime
-    - rsize=131072
-    - wsize=131072
+    - nolock
     - fsc
   nfs:
     server: {{ nfs_server }}
-    path: {{ nfs_k3s_v4_path }}/lyrion
+    path: {{ nfs_k3s_path }}/lyrion
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
