@@ -32,6 +32,16 @@
         enabled: yes
         state: started
 
+    - name: Create squeezeboxserver system user for NFSv4 ID mapping
+      user:
+        name: squeezeboxserver
+        uid: 499
+        system: yes
+        shell: /usr/sbin/nologin
+        home: /nonexistent
+        create_home: no
+        state: present
+
   handlers:
     - name: Reboot node
       reboot:

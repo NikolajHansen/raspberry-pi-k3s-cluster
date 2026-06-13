@@ -22,13 +22,6 @@ set -e
 POOL="greenlake"
 K3S_SUBNET="192.168.1.0/24"
 
-# NFSv4 requires uid/gid to exist on the server for correct ID mapping.
-# squeezeboxserver uid=499 gid=100 matches the Lyrion container user.
-LYRION_UID=499
-LYRION_GID=100
-LYRION_USER=squeezeboxserver
-LYRION_GROUP=users
-
 # Applications to create datasets for.
 # Add new apps here as needed — one per line.
 apps="
@@ -39,21 +32,6 @@ lyrion
 if [ "$(id -u)" -ne 0 ]; then
   echo "ERROR: This script must be run as root (su - or sudo)"
   exit 1
-fi
-
-# Create group and user for NFSv4 ID mapping (Lyrion container user)
-if pw groupshow ${LYRION_GROUP} > /dev/null 2>&1; then
-  echo "==> Group '${LYRION_GROUP}' (gid ${LYRION_GID}) already exists"
-else
-  echo "==> Creating group '${LYRION_GROUP}' (gid ${LYRION_GID})"
-  pw groupadd -n ${LYRION_GROUP} -g ${LYRION_GID}
-fi
-
-if pw usershow ${LYRION_USER} > /dev/null 2>&1; then
-  echo "==> User '${LYRION_USER}' (uid ${LYRION_UID}) already exists"
-else
-  echo "==> Creating user '${LYRION_USER}' (uid ${LYRION_UID})"
-  pw useradd -n ${LYRION_USER} -u ${LYRION_UID} -g ${LYRION_GID} -d /nonexistent -s /usr/sbin/nologin
 fi
 
 # Create parent dataset if it doesn't exist
