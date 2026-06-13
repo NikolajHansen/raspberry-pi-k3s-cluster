@@ -13,8 +13,10 @@
 
 | Mount | Source | Access |
 |---|---|---|
-| `/media` | `atlas.barnabas.dk:/greenlake/media` | Read-only, NFSv3, rsize/wsize=128K |
-| `/config` | `atlas.barnabas.dk:/greenlake/k3s/lyrion` | Read-write, NFSv3, nolock |
+| `/media` | `atlas.example.com:/media` | Read-only, NFSv4, hard, rsize/wsize=128K |
+| `/config` | `atlas.example.com:/k3s/lyrion` | Read-write, NFSv4, hard, rsize/wsize=128K |
+
+NFSv4 is required — NFSv3 cannot handle concurrent file access needed by SQLite WAL mode.
 
 The `/config` mount persists all state across pod restarts and rescheduling:
 - `prefs/` — server and plugin settings
@@ -30,23 +32,36 @@ The `/config` mount persists all state across pod restarts and rescheduling:
 
 ### File ownership on NFS
 
-Files must be owned by UID 499 (squeezeboxserver inside the container). The NFS root directory needs the correct ownership:
+Files must be owned by UID 499 (`squeezeboxserver` inside the container). NFSv4 maps UIDs numerically (`sec=sys`) — the `squeezeboxserver` user (uid=499) is created on all k3s nodes by `k3s-cluster.yml`. If ownership is wrong on atlas:
 
 ```bash
-# On atlas — run once if ownership is wrong
-sudo chown 499:100 /greenlake/k3s/lyrion
+ssh atlas 'sudo chown -R 499:100 /greenlake/k3s/lyrion'
 ```
 
-### SQLite WAL mode on NFS
+### SQLite WAL mode
 
-SQLite WAL mode creates `.db-wal` and `.db-shm` shared memory files that do not work reliably over NFS. An init container runs before LMS starts and removes stale `-wal` and `-shm` files. If LMS crashes or is force-killed, stale WAL files may remain — remove them manually on atlas:
+SQLite WAL mode creates `.db-wal` and `.db-shm` files alongside each database. A `fix-sqlite-wal` init container checkpoints all WALs using `PRAGMA wal_checkpoint(TRUNCATE)` before Lyrion starts.
+
+> **Never delete WAL files manually** — checkpoint first or let Lyrion recover them on startup.
+
+If a database is corrupt (not valid SQLite), the init container removes it and Lyrion rebuilds from scratch.
+
+### ZFS snapshots (backup/restore)
+
+Use `scripts/lyrion-backup.sh` on atlas after a full successful scan (wait for `scanner.pl` to exit):
 
 ```bash
-sudo rm -f /greenlake/k3s/lyrion/cache/*.db-wal /greenlake/k3s/lyrion/cache/*.db-shm
-sudo rm -f /greenlake/k3s/lyrion/prefs/*.db-wal /greenlake/k3s/lyrion/prefs/*.db-shm
-```
+# Take a snapshot
+ssh atlas 'sudo sh scripts/lyrion-backup.sh snapshot'
 
-Then restart the pod.
+# List snapshots
+ssh atlas 'sudo sh scripts/lyrion-backup.sh list'
+
+# Restore (scale pod to 0 first)
+kubectl -n lyrion scale deployment/lyrion --replicas=0
+ssh atlas 'sudo sh scripts/lyrion-backup.sh rollback'
+kubectl -n lyrion scale deployment/lyrion --replicas=1
+```
 
 ## Networking
 
@@ -93,6 +108,26 @@ A full scan runs automatically on startup and can be triggered manually via Sett
 | Qobuz library | ~278 sec |
 | MusicArtistInfo (1501 artists) | ~55 sec |
 | Artwork precache (544 albums) | ~225 sec |
+
+## Init containers
+
+The pod runs two init containers before Lyrion starts:
+
+| Container | Purpose |
+|---|---|
+| `check-mounts` | Verifies `/config` is writable and `/media/music` is readable (retries 60s) |
+| `fix-sqlite-wal` | Checkpoints all SQLite WALs; removes corrupt non-SQLite files |
+
+## Resource limits
+
+| | Request | Limit |
+|---|---|---|
+| CPU | 250m | 2000m |
+| Memory | 512Mi | 1500Mi |
+
+## Graceful shutdown
+
+A `preStop` hook sends `stopserver` to the Lyrion CLI port (9090) via `bash /dev/tcp`, waits for the perl process to exit (up to 30s), then runs `sync`. `terminationGracePeriodSeconds` is 60.
 
 ## Deployment
 

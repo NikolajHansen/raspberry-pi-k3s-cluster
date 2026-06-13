@@ -22,6 +22,7 @@ All nodes run **Raspberry Pi OS Lite** (Debian 12 Bookworm, 64-bit, headless).
 | [Unbound](https://nlnetlabs.nl/projects/unbound/) | Internal DNS resolver (deployed in-cluster) |
 | [CoreDNS](https://coredns.io) | Kubernetes cluster DNS (k3s default, customised) |
 | [NetworkManager](https://networkmanager.dev) | Static IP management on nodes |
+| [Botkube](https://botkube.io) | Kubernetes event monitoring with Slack alerts |
 | [Lyrion Music Server](https://lyrion.org) | Music streaming server (Squeezebox compatible) |
 | [Bitwarden CLI](https://bitwarden.com/help/cli/) | Secrets management for Ansible |
 
@@ -63,7 +64,8 @@ graph TD
     metallb[MetalLB\nmetallb-system]
     unbound[Unbound DNS\nkube-system]
     coredns[CoreDNS\nkube-system]
-    lyrion[Lyrion Music Server\nlyrion namespace\nVIP: 10.0.0.60]
+    botkube[Botkube\nbotkube namespace\nSlack alerts]
+    lyrion[Lyrion Music Server\nlyrion namespace\nVIP: 10.0.0.61]
     workers[Worker Nodes\nnode01–node09\nK3s Agents]
 
     rancher --> master
@@ -71,6 +73,7 @@ graph TD
     metallb --> master
     unbound --> master
     coredns --> master
+    botkube --> master
     lyrion --> workers
     master -->|schedules workloads| workers
     coredns -->|forwards internal DNS| unbound
@@ -86,5 +89,5 @@ MetalLB runs in L2 mode with IP pool `10.0.0.60–10.0.0.70`. It provides stable
 
 | Service | VIP |
 |---|---|
-| Lyrion Music Server | 10.0.0.60 |
-| Traefik (ingress) | 10.0.0.61 |
+| Rancher | 10.0.0.60 |
+| Lyrion Music Server | 10.0.0.61 |
