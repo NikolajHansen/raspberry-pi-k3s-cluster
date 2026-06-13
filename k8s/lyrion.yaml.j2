@@ -97,14 +97,14 @@ spec:
     spec:
       hostNetwork: true
       initContainers:
-        - name: fix-sqlite-wal
+        - name: fix-prefs-wal
           image: alpine:latest
           command:
             - sh
             - -c
             - |
-              apk add --quiet sqlite file && \
-              for db in /config/prefs/*.db /config/cache/*.db; do
+              apk add --quiet sqlite file
+              for db in /config/prefs/*.db; do
                 [ -f "$db" ] || continue
                 if file "$db" | grep -q SQLite; then
                   rm -f "${db}-wal" "${db}-shm"
@@ -142,12 +142,19 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+            - name: cache
+              mountPath: /config/cache
+            - name: config
+              mountPath: /config/cache/InstalledPlugins
+              subPath: cache/InstalledPlugins
             - name: music
               mountPath: /media
       volumes:
         - name: config
           persistentVolumeClaim:
             claimName: lyrion-config
+        - name: cache
+          emptyDir: {}
         - name: music
           persistentVolumeClaim:
             claimName: lyrion-media
