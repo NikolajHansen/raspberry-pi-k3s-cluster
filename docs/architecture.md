@@ -58,26 +58,44 @@ graph TD
 
 ```mermaid
 graph TD
-    rancher[Rancher UI\nrancher.example.com]
-    master[master01\nK3s Server\nControl Plane + etcd]
-    certmgr[cert-manager\ncattle-system]
-    metallb[MetalLB\nmetallb-system]
-    unbound[Unbound DNS\nkube-system]
-    coredns[CoreDNS\nkube-system]
-    botkube[Botkube\nbotkube namespace\nSlack alerts]
-    lyrion[Lyrion Music Server\nlyrion namespace\nVIP: 10.0.0.61]
-    workers[Worker Nodes\nnode01–node09\nK3s Agents]
+    subgraph external["External Access"]
+        user((User / Browser))
+        slack((Slack))
+    end
 
-    rancher --> master
-    certmgr --> master
-    metallb --> master
-    unbound --> master
-    coredns --> master
-    botkube --> master
-    lyrion --> workers
-    master -->|schedules workloads| workers
+    subgraph master_plane["Control Plane — master01 (10.0.0.50)"]
+        k3s[K3s Server\nAPI + Scheduler + Controller]
+        rancher[Rancher UI\nrancher.example.com]
+        certmgr[cert-manager\ncattle-system]
+        metallb[MetalLB\nmetallb-system\nL2 VIP pool 10.0.0.60–70]
+        coredns[CoreDNS\nkube-system]
+    end
+
+    subgraph system_pods["System Pods — scheduled on workers"]
+        unbound[Unbound DNS\nkube-system]
+        botkube[Botkube\nbotkube namespace]
+    end
+
+    subgraph workloads["Workloads — Worker Nodes (node01–09)"]
+        lyrion[Lyrion Music Server\nlyrion namespace\nVIP: 10.0.0.61]
+    end
+
+    subgraph storage["External Storage — atlas.example.com"]
+        nfs[(NFSv4\n/k3s/lyrion\n/media)]
+    end
+
+    user -->|HTTPS| rancher
+    user -->|http://lyrion.example.com| lyrion
+    slack <-->|Socket Mode| botkube
+    rancher --> k3s
+    certmgr --> k3s
+    metallb --> k3s
+    coredns --> k3s
+    k3s -->|schedules| system_pods
+    k3s -->|schedules| workloads
     coredns -->|forwards internal DNS| unbound
-    metallb -->|assigns VIPs| lyrion
+    metallb -->|announces VIP| lyrion
+    lyrion -->|mounts| nfs
 ```
 
 ## MetalLB
