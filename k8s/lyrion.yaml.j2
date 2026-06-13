@@ -25,6 +25,8 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   mountOptions:
     - vers=4
+    - hard
+    - retrans=3
     - noatime
     - nodiratime
     - rsize=131072
@@ -61,6 +63,8 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   mountOptions:
     - vers=4
+    - hard
+    - retrans=3
     - noatime
     - nodiratime
     - rsize=131072
@@ -172,15 +176,22 @@ spec:
             - name: slimproto-udp
               containerPort: 3483
               protocol: UDP
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1500Mi"
+              cpu: "2000m"
           lifecycle:
             preStop:
               exec:
                 command:
-                  - sh
+                  - bash
                   - -c
                   - |
-                    # Gracefully stop Lyrion via CLI
-                    echo "stopserver" | nc -w 5 localhost 9090 || true
+                    # Gracefully stop Lyrion via CLI (bash /dev/tcp — no nc needed)
+                    echo "stopserver" > /dev/tcp/localhost/9090 || true
                     # Wait for the perl process to exit (up to 30s)
                     for i in $(seq 1 30); do
                       pgrep -f slimserver.pl || break
@@ -214,10 +225,6 @@ spec:
   ports:
     - name: web
       port: 80
-      targetPort: 9000
-      protocol: TCP
-    - name: rpc
-      port: 9000
       targetPort: 9000
       protocol: TCP
     - name: cli

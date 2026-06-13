@@ -20,18 +20,6 @@
       when: cgroups_check.rc != 0
       notify: Reboot node
 
-    - name: Install cachefilesd for NFS client-side caching
-      apt:
-        name: cachefilesd
-        state: present
-        update_cache: yes
-
-    - name: Enable and start cachefilesd
-      systemd:
-        name: cachefilesd
-        enabled: yes
-        state: started
-
     - name: Create squeezeboxserver system user for NFSv4 ID mapping
       user:
         name: squeezeboxserver
