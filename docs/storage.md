@@ -1,6 +1,6 @@
 # Persistent Storage
 
-Application data is stored on `atlas.example.com` (ZFS pool: `greenlake`) and exported via NFS to the k3s subnet.
+Application data is stored on `atlas.barnabas.dk` (ZFS pool: `greenlake`) and exported via NFS to the k3s subnet.
 
 Data follows the **pod, not the node** — pods can be rescheduled freely between nodes without data loss.
 
@@ -24,10 +24,10 @@ Exports are configured via the ZFS `sharenfs` property — **not** `/etc/exports
 
 ```bash
 # k3s app storage (read-write, all cluster nodes)
-zfs set sharenfs="-alldirs -maproot=root -network 10.0.0.0/24" greenlake/k3s
+zfs set sharenfs="-alldirs -maproot=root -network 192.168.1.0/24" greenlake/k3s
 
 # Music library (read-only, set via sharenfs on dataset)
-zfs set sharenfs="-mapall=media:media -network 10.0.0.0/24" greenlake/media
+zfs set sharenfs="-mapall=media:media -network 192.168.1.0/24" greenlake/media
 ```
 
 Verify with:
@@ -48,7 +48,7 @@ LMS uses SQLite with WAL (Write-Ahead Logging) by default. WAL requires shared m
 
 ## Setup
 
-Run once as root on `atlas.example.com` to create datasets and configure NFS exports:
+Run once as root on `atlas.barnabas.dk` to create datasets and configure NFS exports:
 
 ```bash
 sudo sh scripts/atlas-k3s-storage-setup.sh
