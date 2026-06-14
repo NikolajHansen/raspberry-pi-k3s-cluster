@@ -13,9 +13,12 @@ Move the k3s cluster nodes from the main LAN to a dedicated cluster VLAN, with a
 ### atlas
 
 - [ ] Reconfigure the chosen NIC from current LAN alias (e.g. `192.168.1.30`) to cluster VLAN IP (e.g. `10.1.10.200`) in `/etc/rc.conf`
-- [ ] Bind NFS (`mountd`/`nfsd`) explicitly to cluster VLAN IP — do not leave on `*`
-- [ ] Update NFS exports to allow the cluster VLAN subnet (`10.1.10.0/24`) instead of LAN subnet
-- [ ] Update `scripts/atlas-k3s-storage-setup.sh` — change `K3S_SUBNET` default to cluster VLAN
+- [ ] NFS must remain accessible from **both** subnets (LAN clients + k3s nodes) — update ZFS `sharenfs` to include both networks:
+  ```sh
+  zfs set sharenfs="-alldirs -maproot=root -network 192.168.1.0/24 -network 10.1.10.0/24" greenlake/k3s
+  zfs set sharenfs="-alldirs -maproot=root -network 192.168.1.0/24 -network 10.1.10.0/24" greenlake/media
+  ```
+- [ ] Update `scripts/atlas-k3s-storage-setup.sh` — add `K3S_LAN_SUBNET` var alongside `K3S_SUBNET` and export to both
 - [ ] Decision: run `udpbroadcastrelay` on atlas for Squeezebox port 3483 if static server IP on Squeezeboxes is not viable
 
 ### Squeezeboxes
