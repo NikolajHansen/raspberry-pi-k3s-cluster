@@ -37,7 +37,7 @@
         --namespace {{ item.namespace }}
         --create-namespace
         {% if item.version is defined %}--version {{ item.version }}{% endif %}
-        {% for k, v in (item.values | default({})).items() %}--set {{ k }}={{ v }} {% endfor %}
+        {% if 'values' in item %}{% for kv in item['values'] | dict2items %}--set {{ kv.key }}={{ kv.value }} {% endfor %}{% endif %}
         --wait
         --timeout 10m
       environment:
