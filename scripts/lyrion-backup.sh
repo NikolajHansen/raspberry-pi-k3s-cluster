@@ -1,5 +1,5 @@
 #!/bin/sh
-# Lyrion ZFS snapshot backup/restore on atlas.barnabas.dk
+# Lyrion ZFS snapshot backup/restore on the NAS server.
 #
 # ZFS snapshots are instant, atomic, and space-efficient (copy-on-write).
 # Snapshots live in greenlake/k3s/lyrion@<name> and can be listed, rolled

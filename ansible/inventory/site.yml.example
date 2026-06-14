@@ -16,6 +16,11 @@ secondary_domain: example.org
 nfs_server: nfs.example.com
 nfs_music_path: /data/media
 nfs_k3s_path: /data/k3s
+nfs_k3s_v4_path: /k3s          # NFSv4 path relative to V4 root on the NAS
+
+# Lyrion NFS paths (NFSv4, relative to V4 root)
+lyrion_nfs_config_path: /k3s/lyrion
+lyrion_nfs_music_path: /media
 
 # Service hostnames
 rancher_hostname: rancher.example.com

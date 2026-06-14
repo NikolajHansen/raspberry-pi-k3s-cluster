@@ -1,2 +1,4 @@
 ansible/inventory/credentials.yml
 ansible/.vault_pass
+ansible/inventory/inventory.yml
+ansible/inventory/hosts.yml

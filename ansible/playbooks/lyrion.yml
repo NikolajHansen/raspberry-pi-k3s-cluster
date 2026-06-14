@@ -4,12 +4,12 @@
   become: yes
   vars:
     kubeconfig: /etc/rancher/k3s/k3s.yaml
-    # Defaults — override via ~/k3s-site.yml (loaded by k3s-ansible wrapper)
-    lyrion_nfs_server: "atlas.example.com"
-    lyrion_nfs_config_path: "/k3s/lyrion"
-    lyrion_nfs_music_path: "/media"
-    lyrion_vip: "10.0.0.61"
-    lyrion_hostname: "lyrion.example.com"
+    # These must be set in ~/k3s-site.yml — no safe defaults possible
+    lyrion_nfs_server: "{{ nfs_server }}"
+    lyrion_nfs_config_path: "{{ lyrion_nfs_config_path | default('/k3s/lyrion') }}"
+    lyrion_nfs_music_path: "{{ lyrion_nfs_music_path | default('/media') }}"
+    lyrion_vip: "{{ lyrion_vip }}"
+    lyrion_hostname: "{{ lyrion_hostname }}"
   tasks:
     - name: Copy Lyrion Helm chart to master
       copy:

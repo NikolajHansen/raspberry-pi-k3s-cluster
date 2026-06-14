@@ -128,7 +128,7 @@
     - name: Install K3s agent
       shell: >
         curl -sfL https://get.k3s.io | sh -s - agent
-        --server https://192.168.1.50:6443
+        --server https://{{ hostvars[groups['masters'][0]]['ansible_host'] }}:6443
         --token {{ lookup('file', '/tmp/k3s_token') | trim }}
       args:
         creates: /usr/local/bin/k3s

@@ -1,0 +1,34 @@
+# Per-host IP addresses — site-specific, not committed to git.
+# Copy this to ~/k3s-inventory.yml and fill in your real IPs.
+all:
+  hosts:
+    master01:
+      ansible_host: 10.0.0.50
+      static_ip: 10.0.0.50
+    node01:
+      ansible_host: 10.0.0.51
+      static_ip: 10.0.0.51
+    node02:
+      ansible_host: 10.0.0.52
+      static_ip: 10.0.0.52
+    node03:
+      ansible_host: 10.0.0.53
+      static_ip: 10.0.0.53
+    node04:
+      ansible_host: 10.0.0.54
+      static_ip: 10.0.0.54
+    node05:
+      ansible_host: 10.0.0.55
+      static_ip: 10.0.0.55
+    node06:
+      ansible_host: 10.0.0.56
+      static_ip: 10.0.0.56
+    node07:
+      ansible_host: 10.0.0.57
+      static_ip: 10.0.0.57
+    node08:
+      ansible_host: 10.0.0.58
+      static_ip: 10.0.0.58
+    node09:
+      ansible_host: 10.0.0.59
+      static_ip: 10.0.0.59

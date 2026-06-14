@@ -1,8 +1,8 @@
 #!/bin/sh
-# Setup app-oriented NFS storage for k3s cluster on atlas.barnabas.dk
+# Setup app-oriented NFS storage for k3s cluster on the NAS server.
 #
 # Creates a ZFS dataset per application under greenlake/k3s/ with a
-# single NFS export for the entire k3s subnet (192.168.1.0/24).
+# single NFS export for the entire k3s subnet.
 #
 # Data follows the pod, not the node — pods can move freely between
 # nodes and still access their persistent data.
@@ -10,17 +10,20 @@
 # To add a new application, add it to the `apps` list below and re-run.
 # The script is idempotent — existing datasets and exports are skipped.
 #
-# Usage (run as root on atlas.barnabas.dk):
+# Usage (run as root on the NAS):
 #   su -
 #   sh scripts/atlas-k3s-storage-setup.sh
 #
 # Or with sudo:
 #   sudo sh scripts/atlas-k3s-storage-setup.sh
+#
+# Override the subnet via environment variable if needed:
+#   K3S_SUBNET=10.0.0.0/24 sh scripts/atlas-k3s-storage-setup.sh
 
 set -e
 
 POOL="greenlake"
-K3S_SUBNET="192.168.1.0/24"
+K3S_SUBNET="${K3S_SUBNET:-192.168.1.0/24}"
 
 # Applications to create datasets for.
 # Add new apps here as needed — one per line.
