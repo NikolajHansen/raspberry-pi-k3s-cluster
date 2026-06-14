@@ -6,13 +6,13 @@ Move the k3s cluster nodes from the main LAN to a dedicated cluster VLAN, with a
 
 ### Prerequisites
 
-- [ ] Install spare NIC in atlas (FreeBSD NAS)
+- [ ] Plug `em0` (or `em1`–`em3`) on atlas into the cluster VLAN switch port — NICs are present, just no carrier
 - [ ] Configure managed switch: cluster VLAN (e.g. 10.1.10.x), trunk port to pfSense, access ports for Pi nodes
 - [ ] Add pfSense VLAN interface and firewall rules (LAN → cluster VLAN: SSH port 22, Rancher port 443, MetalLB VIP ports)
 
 ### atlas
 
-- [ ] Assign IP to new cluster VLAN NIC (e.g. `10.1.10.200`)
+- [ ] Reconfigure the chosen NIC from current LAN alias (e.g. `192.168.1.30`) to cluster VLAN IP (e.g. `10.1.10.200`) in `/etc/rc.conf`
 - [ ] Bind NFS (`mountd`/`nfsd`) explicitly to cluster VLAN IP — do not leave on `*`
 - [ ] Update NFS exports to allow the cluster VLAN subnet (`10.1.10.0/24`) instead of LAN subnet
 - [ ] Update `scripts/atlas-k3s-storage-setup.sh` — change `K3S_SUBNET` default to cluster VLAN
