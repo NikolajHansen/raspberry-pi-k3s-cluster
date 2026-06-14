@@ -1,5 +1,6 @@
-# Per-host IP addresses — site-specific, not committed to git.
-# Copy this to ~/k3s-inventory.yml and fill in your real IPs.
+# Per-host IP addresses for the k3s cluster.
+# Copy this file to ~/k3s-inventory.yml and fill in your real IPs.
+# Loaded automatically by ~/bin/k3s-ansible — never committed to git.
 all:
   hosts:
     master01:

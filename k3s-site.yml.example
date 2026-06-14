@@ -1,6 +1,6 @@
 # Site-specific variables for the k3s cluster.
-# Copy this to ~/k3s-site.yml and fill in your real values.
-# This file is loaded automatically by ~/bin/k3s-ansible.
+# Copy this file to ~/k3s-site.yml and fill in your real values.
+# Loaded automatically by ~/bin/k3s-ansible — never committed to git.
 
 # Networking
 master_ip: 10.0.0.50
@@ -28,5 +28,5 @@ lyrion_hostname: lyrion.example.com
 
 # MetalLB VIPs
 metallb_pool: "10.0.0.60-10.0.0.70"
-lyrion_vip: 10.0.0.60
-traefik_vip: 10.0.0.61
+lyrion_vip: 10.0.0.61
+traefik_vip: 10.0.0.60
