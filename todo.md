@@ -45,4 +45,3 @@ Move the k3s cluster nodes from the main LAN to a dedicated cluster VLAN, with a
 ## Other
 
 - [ ] Rename Botkube Slack app from "Demo App" to "Botkube" (delete and recreate in Slack app portal — username cannot be changed after creation)
-- [ ] Spotify re-auth in Lyrion UI if needed (Settings → Advanced → Spotty)
