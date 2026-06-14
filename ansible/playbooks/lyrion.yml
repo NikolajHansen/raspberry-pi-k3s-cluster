@@ -4,12 +4,29 @@
   become: yes
   vars:
     kubeconfig: /etc/rancher/k3s/k3s.yaml
+    # Defaults — override via ~/k3s-site.yml (loaded by k3s-ansible wrapper)
+    lyrion_nfs_server: "atlas.example.com"
+    lyrion_nfs_config_path: "/k3s/lyrion"
+    lyrion_nfs_music_path: "/media"
+    lyrion_vip: "10.0.0.61"
+    lyrion_hostname: "lyrion.example.com"
   tasks:
-    - name: Render Lyrion manifest
-      template:
-        src: ../../k8s/lyrion.yaml.j2
-        dest: /tmp/lyrion.yaml
+    - name: Copy Lyrion Helm chart to master
+      copy:
+        src: ../../charts/lyrion/
+        dest: /tmp/lyrion-chart/
 
-    - name: Apply Lyrion manifest
-      command: kubectl --kubeconfig {{ kubeconfig }} apply -f /tmp/lyrion.yaml
-      changed_when: true
+    - name: Deploy Lyrion via Helm
+      command: >
+        helm upgrade --install lyrion /tmp/lyrion-chart
+        --namespace lyrion
+        --create-namespace
+        --set nfsServer={{ lyrion_nfs_server }}
+        --set nfsConfigPath={{ lyrion_nfs_config_path }}
+        --set nfsMusicPath={{ lyrion_nfs_music_path }}
+        --set vip={{ lyrion_vip }}
+        --set hostname={{ lyrion_hostname }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: helm_result
+      changed_when: "'has been upgraded' in helm_result.stdout or 'has been deployed' in helm_result.stdout"

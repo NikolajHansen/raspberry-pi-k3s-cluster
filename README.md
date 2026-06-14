@@ -35,8 +35,12 @@ A 10-node Kubernetes cluster running on Raspberry Pi hardware, provisioned with 
 │   ├── provisioning.md              # Ansible usage and cluster bootstrap
 │   ├── storage.md                   # NFS/ZFS persistent storage
 │   └── lyrion.md                    # Lyrion Music Server details
-├── k8s/
-│   └── lyrion.yaml.j2               # Lyrion manifest template
+├── charts/
+│   └── lyrion/                      # Lyrion Helm chart
+│       ├── Chart.yaml
+│       ├── values.yaml              # Default values (override via site vars)
+│       └── templates/
+│           └── lyrion.yaml          # Kubernetes manifests
 ├── scripts/
 │   ├── atlas-k3s-storage-setup.sh  # NFS storage setup on atlas.example.com (run as root)
 │   └── lyrion-backup.sh            # ZFS snapshot backup/restore for Lyrion

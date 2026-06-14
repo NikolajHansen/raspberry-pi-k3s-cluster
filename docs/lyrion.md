@@ -135,6 +135,15 @@ A `preStop` hook sends `stopserver` to the Lyrion CLI port (9090) via `bash /dev
 k3s-ansible lyrion.yml
 ```
 
+Or directly with Helm (from a machine with kubeconfig and the chart):
+
+```bash
+helm upgrade --install lyrion charts/lyrion \
+  --set nfsServer=atlas.example.com \
+  --set vip=10.0.0.61 \
+  --set hostname=lyrion.example.com
+```
+
 ## Screensaver (SB2/physical players)
 
 To show a clock on the display when a player is off:
