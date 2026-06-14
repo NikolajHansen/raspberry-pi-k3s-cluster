@@ -6,7 +6,7 @@ nfsConfigPath: /k3s/lyrion
 nfsMusicPath: /media
 
 # MetalLB VIP for the LoadBalancer service
-vip: 10.0.0.61
+vip: ""
 
 # Hostname for the Ingress rule
 hostname: lyrion.example.com
