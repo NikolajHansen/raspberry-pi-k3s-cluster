@@ -31,6 +31,18 @@
         KUBECONFIG: "{{ kubeconfig }}"
       changed_when: false
 
+    - name: Write Botkube Slack tokens to temp values file
+      copy:
+        content: |
+          communications:
+            default-group:
+              socketSlack:
+                botToken: "{{ botkube_slack_bot_token }}"
+                appToken: "{{ botkube_slack_app_token }}"
+        dest: /tmp/botkube-secrets.yaml
+        mode: '0600'
+      no_log: true
+
     - name: Deploy Botkube via Helm
       command: >
         helm upgrade --install botkube botkube/botkube
@@ -38,12 +50,16 @@
         --create-namespace
         --set communications.default-group.socketSlack.enabled=true
         --set communications.default-group.socketSlack.channels.default.name={{ botkube_slack_channel }}
-        --set communications.default-group.socketSlack.botToken={{ botkube_slack_bot_token }}
-        --set communications.default-group.socketSlack.appToken={{ botkube_slack_app_token }}
         --set settings.clusterName={{ botkube_cluster_name }}
         --set plugins.repositories.botkube.url=https://github.com/kubeshop/botkube/releases/download/v{{ botkube_version }}/plugins-index.yaml
+        --values /tmp/botkube-secrets.yaml
         --wait --timeout 3m
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
       register: botkube_result
       changed_when: "'has been upgraded' in botkube_result.stdout or 'has been deployed' in botkube_result.stdout"
+
+    - name: Remove Botkube secrets temp file
+      file:
+        path: /tmp/botkube-secrets.yaml
+        state: absent

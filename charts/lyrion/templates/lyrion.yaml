@@ -97,7 +97,7 @@ spec:
       terminationGracePeriodSeconds: 60
       initContainers:
         - name: check-mounts
-          image: alpine:latest
+          image: alpine:3.21
           command:
             - sh
             - -c
@@ -124,7 +124,7 @@ spec:
             - name: music
               mountPath: /media
         - name: fix-sqlite-wal
-          image: alpine:latest
+          image: alpine:3.21
           command:
             - sh
             - -c
@@ -186,6 +186,20 @@ spec:
                       sleep 1
                     done
                     sync
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 5
           volumeMounts:
             - name: config
               mountPath: /config
@@ -204,9 +218,10 @@ kind: Service
 metadata:
   name: lyrion
   namespace: lyrion
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: {{ .Values.vip | quote }}
 spec:
   type: LoadBalancer
-  loadBalancerIP: {{ .Values.vip }}
   selector:
     app: lyrion
   ports:

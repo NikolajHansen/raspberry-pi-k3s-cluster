@@ -1,6 +1,6 @@
 ---
 # Deploy Helm chart applications to the k3s cluster.
-# Add entries to `helm_apps` to install additional charts.
+# Define helm_apps in ~/k3s-site.yml as `site_helm_apps`.
 #
 # Each entry supports:
 #   name:       Release name
@@ -16,44 +16,20 @@
   become: yes
   vars:
     kubeconfig: /etc/rancher/k3s/k3s.yaml
-    helm_apps:
-      # Harvester UI Extension for Rancher — adds Harvester cluster type to Rancher UI
-      - name: harvester-ui-extension
-        chart: harvester-ui-ext/harvester
-        repo: harvester-ui-ext
-        repo_url: https://harvester.github.io/harvester-ui-extension/
-        namespace: cattle-ui-plugin-system
-        version: "1.8.0"
-
-      # Example — uncomment and extend as needed:
-      # - name: my-app
-      #   chart: myrepo/my-app
-      #   repo: myrepo
-      #   repo_url: https://charts.example.com
-      #   namespace: my-namespace
-      #   version: "1.2.3"
-      #   values:
-      #     service.type: LoadBalancer
-      #     replicaCount: 2
-
+    helm_apps: "{{ site_helm_apps | default([]) }}"
   tasks:
     - name: Add Helm repos
-      command: helm repo add {{ item.repo }} {{ item.repo_url }}
+      command: helm repo add {{ item.repo }} {{ item.repo_url }} --force-update
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
       loop: "{{ helm_apps }}"
-      changed_when: true
+      changed_when: false
 
     - name: Update Helm repos
       command: helm repo update
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
-      changed_when: true
-
-    - name: Create namespaces
-      command: kubectl --kubeconfig {{ kubeconfig }} create namespace {{ item.namespace }} --dry-run=client -o yaml | kubectl --kubeconfig {{ kubeconfig }} apply -f -
-      loop: "{{ helm_apps }}"
-      changed_when: true
+      changed_when: false
 
     - name: Install/upgrade Helm charts
       command: >
@@ -67,4 +43,5 @@
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
       loop: "{{ helm_apps }}"
-      changed_when: true
+      register: helm_result
+      changed_when: "'has been upgraded' in helm_result.stdout or 'has been deployed' in helm_result.stdout"

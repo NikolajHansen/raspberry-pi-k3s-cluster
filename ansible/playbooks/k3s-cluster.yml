@@ -42,13 +42,9 @@
   become: yes
   vars:
     kubeconfig: /etc/rancher/k3s/k3s.yaml
-    # Defaults — override via ~/k3s-site.yml (loaded by k3s-ansible wrapper)
+    # All vars must be set via ~/k3s-site.yml (loaded by k3s-ansible wrapper)
     master_ip: "{{ hostvars[groups['masters'][0]]['ansible_host'] }}"
-    dns_internal_ip: 10.0.0.21
-    dns_external_ip: 10.0.0.1
-    internal_domain: example.com
-    secondary_domain: example.org
-    lan_subnet: 10.0.0.0/24
+    k3s_version: "{{ k3s_version | default('v1.35.5+k3s1') }}"
   tasks:
     - name: Install K3s server
       shell: >
@@ -56,6 +52,8 @@
         --bind-address {{ master_ip }}
         --node-ip {{ master_ip }}
         --cluster-dns 10.43.0.10
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
       args:
         creates: /usr/local/bin/k3s
 
@@ -75,15 +73,12 @@
     - name: Fetch K3s token
       slurp:
         src: /var/lib/rancher/k3s/server/node-token
-      register: k3s_token
+      register: k3s_token_raw
 
-    - name: Save token to controller
-      copy:
-        content: "{{ k3s_token.content | b64decode | trim }}"
-        dest: /tmp/k3s_token
-        mode: '0600'
-      delegate_to: localhost
-      become: no
+    - name: Store join token as host fact (no disk write)
+      set_fact:
+        k3s_join_token: "{{ k3s_token_raw.content | b64decode | trim }}"
+      no_log: true
 
     - name: Deploy CoreDNS custom config
       template:
@@ -129,7 +124,9 @@
       shell: >
         curl -sfL https://get.k3s.io | sh -s - agent
         --server https://{{ hostvars[groups['masters'][0]]['ansible_host'] }}:6443
-        --token {{ lookup('file', '/tmp/k3s_token') | trim }}
+        --token "{{ hostvars[groups['masters'][0]]['k3s_join_token'] }}"
+      environment:
+        INSTALL_K3S_VERSION: "{{ hostvars[groups['masters'][0]]['k3s_version'] | default('v1.35.5+k3s1') }}"
       args:
         creates: /usr/local/bin/k3s
 
@@ -141,19 +138,22 @@
   vars:
     master_ip: "{{ hostvars[groups['masters'][0]]['ansible_host'] }}"
     kubeconfig: /etc/rancher/k3s/k3s.yaml
-    # Defaults — override via ~/k3s-site.yml (loaded by k3s-ansible wrapper)
-    rancher_hostname: "rancher.example.com"
+    # All vars must be set via ~/k3s-site.yml
+    cert_manager_version: "{{ cert_manager_version | default('v1.20.2') }}"
+    helm_version: "{{ helm_version | default('v3.21.0') }}"
     rancher_bootstrap_password: "{{ lookup('community.general.bitwarden', 'k3s-cluster', field='rancher_bootstrap_password') }}"
   tasks:
     - name: Install Helm
       shell: curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      environment:
+        DESIRED_VERSION: "{{ helm_version }}"
       args:
         creates: /usr/local/bin/helm
 
     - name: Add cert-manager CRDs
       command: >
         kubectl --kubeconfig {{ kubeconfig }}
-        apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.crds.yaml
+        apply -f https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.crds.yaml
       changed_when: false
 
     - name: Add Jetstack Helm repo
@@ -179,6 +179,7 @@
         helm upgrade --install cert-manager jetstack/cert-manager
         --namespace cert-manager
         --create-namespace
+        --version {{ cert_manager_version }}
         --wait
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
