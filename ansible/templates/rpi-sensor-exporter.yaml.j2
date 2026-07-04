@@ -120,6 +120,7 @@ spec:
               protocol: TCP
           securityContext:
             runAsUser: 0
+            privileged: true
             readOnlyRootFilesystem: true
           volumeMounts:
             - name: exporter-script
