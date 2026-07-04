@@ -1,21 +1,51 @@
 # /etc/rsyslog.d/90-remote.conf — managed by Ansible, do not edit manually.
 #
-# Forwards node and k3s journal logs to the central syslog receiver at
-# {{ syslog_server }}:514 over TCP.
+# Forwards node journal logs and Kubernetes pod logs to the central syslog
+# receiver at {{ syslog_server }}:514 over TCP.
 #
 # See docs/logging.md for full architecture details.
 
 # ── Inputs ────────────────────────────────────────────────────────────────────
 
-# Read from the systemd journal (captures k3s, k3s-agent, containerd, and all
-# other systemd units including their stdout/stderr).
+# Read from the systemd journal (captures k3s, k3s-agent, containerd, kernel).
 module(load="imjournal"
        StateFile="/var/lib/rsyslog/imjournal.state"
        IgnorePreviousMessages="off"
        Ratelimit.Burst="20000"
        Ratelimit.Interval="600")
 
-# ── Output: TCP forwarding ────────────────────────────────────────────────────
+# Tail Kubernetes pod log files from all namespaces.
+# Path pattern: /var/log/pods/<ns>_<pod>_<uid>/<container>/<n>.log
+# Each line format: <timestamp> <stream> F <log-content>
+# Tag is set to "k8s/<namespace>/<podname>" derived from the path.
+module(load="imfile")
+input(type="imfile"
+      File="/var/log/pods/*/*/*log"
+      Tag="k8s-pod"
+      Facility="local6"
+      Severity="info"
+      addMetadata="on"
+      freshStartTail="on"
+      Ruleset="forward_k8s")
+
+# ── Rulesets ──────────────────────────────────────────────────────────────────
+
+# Kubernetes pod logs: forward everything (app logs are always interesting).
+# Strips the CRI prefix (timestamp + stream + F) and adds pod path as tag.
+ruleset(name="forward_k8s") {
+    action(type="omfwd"
+           Target="{{ syslog_server }}"
+           Port="514"
+           Protocol="tcp"
+           Template="RSYSLOG_ForwardFormat"
+           queue.type="LinkedList"
+           queue.size="10000"
+           queue.saveOnShutdown="off"
+           action.resumeRetryCount="-1"
+           action.resumeInterval="30")
+}
+
+# ── Output: journal → TCP forwarding ─────────────────────────────────────────
 
 # Use an action queue so messages are buffered in memory (not on disk) when the
 # remote is temporarily unreachable. This preserves the stateless-node property.
