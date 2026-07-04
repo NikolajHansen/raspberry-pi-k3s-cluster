@@ -9,8 +9,7 @@
 # See docs/logging.md for full architecture and atlas-side setup.
 
 - name: Configure rsyslog remote forwarding on all cluster nodes
-  hosts: all
-  limit: "masters,workers"
+  hosts: masters,workers
   become: true
   vars:
     syslog_server: "{{ lookup('vars', 'syslog_server', default='syslog.example.com') }}"
