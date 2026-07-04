@@ -16,8 +16,7 @@ module(load="imjournal"
 
 # Tail Kubernetes pod log files from all namespaces.
 # Path pattern: /var/log/pods/<ns>_<pod>_<uid>/<container>/<n>.log
-# Each line format: <timestamp> <stream> F <log-content>
-# Tag is set to "k8s/<namespace>/<podname>" derived from the path.
+# Pod identity is extracted and embedded as [namespace/podname] in the message.
 module(load="imfile")
 input(type="imfile"
       File="/var/log/pods/*/*/*log"
@@ -28,16 +27,37 @@ input(type="imfile"
       freshStartTail="on"
       Ruleset="forward_k8s")
 
+# ── Templates ─────────────────────────────────────────────────────────────────
+
+# Pod log format: embeds [namespace/podname] at start of message body so
+# syslog-ng on atlas can parse it for per-pod routing without hitting syslog
+# TAG length limits.
+template(name="PodLogFwd" type="string"
+  string="<%pri%>%timereported% %HOSTNAME% k8s-pod: [%!ns%/%!pod%] %msg%\n")
+
 # ── Rulesets ──────────────────────────────────────────────────────────────────
 
-# Kubernetes pod logs: forward everything (app logs are always interesting).
-# Strips the CRI prefix (timestamp + stream + F) and adds pod path as tag.
+# Kubernetes pod logs: extract namespace and pod name from the file path,
+# embed them in the message, then forward.
+# File path: /var/log/pods/<namespace>_<podname>_<uuid>/<container>/<n>.log
 ruleset(name="forward_k8s") {
+    # Extract the 5th path component: <namespace>_<podname>_<uuid>
+    set $!poddir = field($!metadata!filename, "/", 5);
+
+    # Namespace is the text before the first underscore.
+    set $!ns = field($!poddir, "_", 1);
+
+    # Pod name is between the first underscore and the trailing _<UUID>.
+    # UUID is 36 chars: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    set $!pod = re_extract($!poddir,
+        '^[^_]+_(.+)_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        0, 1, "unknown");
+
     action(type="omfwd"
            Target="{{ syslog_server }}"
            Port="514"
            Protocol="tcp"
-           Template="RSYSLOG_ForwardFormat"
+           Template="PodLogFwd"
            queue.type="LinkedList"
            queue.size="10000"
            queue.saveOnShutdown="off"
