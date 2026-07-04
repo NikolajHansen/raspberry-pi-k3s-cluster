@@ -4,29 +4,53 @@
 
 ```
 Pi nodes (all 10)
-  └── rsyslog (imjournal)
-        │  TCP/514
-        └──► atlas.barnabas.dk  (FreeBSD jail: syslog-receiver)
-                └── ZFS dataset: tank/logs/k3s-cluster
-                      └── flat log files, rotated by newsyslog(8)
+  ├── journald  ──►  /run/log/journal  (RAM only — Storage=volatile)
+  │                       │
+  └── rsyslog              │
+        ├── imjournal ─────┘  node/system logs  ──────────────┐
+        └── imfile (/var/log/pods/*/*/*log)  pod logs (local6) ┤  TCP/514
+                                                               │
+                                        atlas.example.com:514 ◄┘
+                                        (FreeBSD jail: syslog-receiver)
+                                              └── syslog-ng
+                                                    ├── /mnt/logs/nodes/<host>/YYYY-MM-DD.log
+                                                    └── /mnt/logs/pods/<host>/YYYY-MM-DD.log
+                                        (ZFS: greenlake/logs/k3s-cluster, rotated 30 days)
 ```
 
-All cluster nodes are **stateless by design** — no log data is kept on the
-nodes themselves. Journal data is forwarded in real-time over TCP to atlas.
+All cluster nodes are **stateless by design** — journald runs in volatile
+(RAM-only) mode; no log data is persisted to SD cards.  Logs are forwarded
+in real-time over TCP to atlas and only stored there.
 
 ## What is forwarded
 
-| Source | Mechanism | Forwarded |
-|--------|-----------|-----------|
-| k3s (server) | `imjournal` (_SYSTEMD_UNIT=k3s.service) | yes |
-| k3s-agent | `imjournal` (_SYSTEMD_UNIT=k3s-agent.service) | yes |
-| containerd / container runtime | `imjournal` | yes |
-| kernel / boot messages | `kern.*` syslog facility | yes |
-| auth / sudo | `auth.*` | yes |
-| All warnings and above | `*.warn` | yes |
+| Source | Mechanism | syslog facility | Forwarded |
+|--------|-----------|-----------------|-----------|
+| k3s server / agent | `imjournal` | default | ✓ |
+| containerd / container runtime | `imjournal` | default | ✓ |
+| kernel / boot messages | `kern.*` | kernel | ✓ |
+| auth / sudo | `auth.*` | auth | ✓ |
+| All warnings and above | `*.warn` | various | ✓ |
+| Kubernetes pod stdout/stderr | `imfile` (pod log files) | `local6` | ✓ |
+| Debug / cron below warning | — | — | ✗ (noise reduction) |
 
-Low-priority noise (debug, cron chatter below warning) is **not** forwarded to
-keep atlas storage modest.
+Pod logs use syslog facility **local6** so syslog-ng on atlas routes them to
+a separate `/mnt/logs/pods/` tree, distinct from node/system logs.
+
+## SD card protection — volatile journald
+
+Node SD cards are protected from log write wear by setting:
+
+```ini
+# /etc/systemd/journald.conf.d/volatile.conf  (deployed by remote-logging.yml)
+[Journal]
+Storage=volatile
+```
+
+This makes journald store its ring buffer in `/run/log/journal` (tmpfs, RAM
+only).  rsyslog's `imjournal` still reads from it in real-time and forwards
+everything to atlas.  If a node reboots, journal entries since the last rsyslog
+flush are lost, but all forwarded entries are safe on atlas.
 
 ## Cluster-side configuration (Ansible-managed)
 
@@ -34,12 +58,12 @@ The playbook `ansible/playbooks/remote-logging.yml` installs rsyslog and
 deploys a drop-in forwarding config to `/etc/rsyslog.d/90-remote.conf` on
 every node.  The template lives at `ansible/templates/rsyslog-remote.conf.j2`.
 
-The `syslog_server` variable defaults to `atlas.barnabas.dk` and can be
-overridden in `~/k3s-site.yml`:
+The `syslog_server` variable defaults to `syslog.example.com` and must be
+set in `~/k3s-site.yml`:
 
 ```yaml
 # ~/k3s-site.yml (site-specific, not committed)
-syslog_server: atlas.barnabas.dk   # FreeBSD host running the syslog receiver
+syslog_server: syslog.example.com   # FreeBSD host running the syslog receiver
 ```
 
 Key design decisions:
@@ -47,14 +71,41 @@ Key design decisions:
   atlas is briefly unreachable (rsyslog queues in memory).
 - `imjournal` — reads from the systemd journal directly, so k3s and container
   logs that go to the journal (not syslog) are captured correctly.
+- `imfile` glob on `/var/log/pods/*/*/*log` — captures structured pod stdout/stderr
+  with syslog facility `local6` for separate routing on atlas.
+- **No on-disk queue** — rsyslog configured `queue.saveOnShutdown="off"` to
+  avoid any SD card writes.
 - Drop-in file under `rsyslog.d/` — avoids touching the OS-default
   `/etc/rsyslog.conf`, making the role idempotent and upgrade-safe.
 
-## Atlas-side configuration (out of scope for this repo)
+## Atlas-side configuration (Ansible-managed)
 
-Atlas is a FreeBSD host managed separately from these Ansible playbooks.
+Atlas is a FreeBSD host with a dedicated `syslog-receiver` jail.  It is
+managed via `ansible/playbooks/atlas-syslog-config.yml` which deploys
+`ansible/templates/syslog-ng.conf.j2` into the jail.
+
+Atlas must be added to inventory under the `nas` group (see
+`k3s-inventory.yml.example`) and to `~/k3s-inventory.yml`.
+
+```yaml
+# ~/k3s-inventory.yml excerpt
+nas:
+  hosts:
+    atlas.example.com:
+      ansible_user: nikolaj
+      ansible_python_interpreter: /usr/local/bin/python3
+```
+
+To apply config changes to atlas:
+
+```sh
+k3s-ansible atlas-syslog-config.yml
+```
+
+### First-time jail setup
+
 A fully automated setup script is provided at `scripts/atlas-syslog-jail-setup.sh`.
-Copy it to atlas and run it as root:
+Copy it to atlas and run it as root once:
 
 ```sh
 scp scripts/atlas-syslog-jail-setup.sh atlas.example.com:~/
@@ -62,76 +113,27 @@ ssh atlas.example.com
 sudo sh ~/setup-syslog-jail.sh
 ```
 
-The script performs all steps below automatically. The manual breakdown is
-provided for reference.
+The script creates the ZFS dataset, nullfs-based jail, installs syslog-ng,
+and configures initial routing.  All subsequent config changes go through
+the Ansible playbook.
 
-### 1. Create ZFS dataset
+#### Gotchas discovered during setup
 
-```sh
-zfs create greenlake/logs/k3s-cluster
-# Mounts at /greenlake/logs/k3s-cluster
-```
+- `jail -c <name>` does not read `/etc/jail.conf.d/` — use `service jail start <name>`.
+- `master.passwd` in the jail must be populated and `pwd_mkdb` run or the
+  jail fails with `initgroups root: Operation not permitted`.
+- Do not pre-assign the jail IP to the host NIC — let `service jail start` do it.
+- `mount.procfs` in `jail.conf` and a `proc` `fstab` entry are mutually exclusive;
+  use only one.
 
-### 2. Create a jail for the syslog receiver
+### syslog-ng routing on atlas
 
-The script creates a nullfs-based jail at `/area51/jails/syslog.example.com`
-using the shared basejail pattern, assigns IP `10.0.0.25`, and writes
-`/etc/jail.conf.d/syslog.conf`.
+| Filter | Destination |
+|--------|------------|
+| `facility(local6)` — pod logs | `/mnt/logs/pods/<host>/YYYY-MM-DD.log` |
+| Everything else — node/system logs | `/mnt/logs/nodes/<host>/YYYY-MM-DD.log` |
 
-### 3. Configure syslog-ng inside the jail
+Logs are rotated daily, 30 days retained, via `newsyslog.conf.d/` on atlas.
 
-Installs syslog-ng from pkg inside the jail and configures it as a receiver
-on TCP 514:
-
-```conf
-# /usr/local/etc/rsyslog.conf (inside syslog-receiver jail)
-module(load="imtcp")
-input(type="imtcp" port="514")
-
-# Write all forwarded messages to per-host files
-template(name="PerHostFile" type="string"
-  string="/var/log/k3s-cluster/%HOSTNAME%/%$YEAR%-%$MONTH%-%$DAY%.log")
-
-*.* ?PerHostFile
-```
-
-### 4. Expose TCP 514 from atlas to the cluster network
-
-If the receiver runs inside a jail with a private jail IP, configure a PF NAT
-redirect or assign the jail a routable IP reachable from all Pi nodes.
-
-### 5. Log rotation
-
-Add a `newsyslog.conf` entry for `/var/log/k3s-cluster/` to rotate daily,
-keeping 30 days of compressed logs.
-
-```conf
-# /etc/newsyslog.conf.d/k3s-cluster.conf (on atlas, outside jail)
-/var/log/k3s-cluster/*/*.log  644  30  *  @T00  JC
-```
-
-## Phase 2 — pod/container log aggregation (Loki)
-
-Phase 1 covers **node-level** logs (journal → rsyslog → atlas).  Container
-stdout/stderr forwarded to the journal is included, but structured pod-level
-log aggregation is deferred to Phase 2.
-
-Phase 2 plan:
-- Run a **Loki** instance on atlas (inside a jail or as a standalone binary)
-  backed by the same ZFS dataset.
-- Deploy **Vector** or **Promtail** as a DaemonSet on the cluster, configured
-  to tail `/var/log/pods/**/*.log` and forward to atlas Loki.
-- Add a Loki datasource to the Rancher Monitoring Grafana instance so logs are
-  searchable alongside metrics.
-
-Phase 2 is out of scope until the cluster VLAN migration (see `todo.md`) is
-complete, as network topology changes will affect routing between pods and atlas.
-
-## Stateless-node constraint
-
-Cluster nodes must remain stateless — no persistent disk writes, no
-node-local services that accumulate state.  rsyslog in forwarding-only mode
-satisfies this: it reads from the journal (kernel-managed ring buffer) and
-forwards over TCP.  If atlas is temporarily unreachable, rsyslog buffers in
-memory (configurable, default ~10 MB per node) and retries; **no on-disk
-queue file is written to the node**.
+The ZFS path is `/greenlake/logs/k3s-cluster/` (bind-mounted into the jail
+at `/mnt/logs/`).
