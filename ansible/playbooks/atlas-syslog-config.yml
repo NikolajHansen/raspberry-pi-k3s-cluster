@@ -1,76 +1,44 @@
 ---
 # Configure the syslog-ng receiver jail on atlas (FreeBSD).
-# Manages the syslog-ng config and log directory layout.
+#
+# This playbook runs as nikolaj (no become required). It renders the
+# syslog-ng config and stages it at /tmp/syslog-ng.conf on atlas, then
+# prints the 4 root commands needed to apply it.
 #
 # Run with: k3s-ansible atlas-syslog-config.yml
-# Or directly:
-#   ansible-playbook -i ansible/inventory/groups.yml -i ~/k3s-inventory.yml \
-#     -e @~/k3s-site.yml ansible/playbooks/atlas-syslog-config.yml
+#
+# After the playbook, SSH to atlas and run the printed commands as root:
+#   ssh atlas.example.com && su -
 
-- name: Configure syslog-ng on atlas syslog jail
+- name: Stage syslog-ng config on atlas
   hosts: atlas
-  become: true
+  become: false
   vars:
     log_root: /greenlake/k3s/logs
     jail_name: syslog
     jail_root: /area51/jails/syslog.barnabas.dk
-    jail_fstab: /etc/fstab.syslog
-    syslogng_conf_src: "{{ playbook_dir }}/../templates/syslog-ng.conf.j2"
-    syslogng_conf_dst: "{{ jail_root }}/usr/local/etc/syslog-ng.conf"
 
   tasks:
-    - name: Ensure ZFS log dataset exists
-      ansible.builtin.command:
-        cmd: zfs create -p greenlake/k3s/logs
-      register: zfs_create
-      failed_when: zfs_create.rc != 0 and 'already exists' not in zfs_create.stderr
-      changed_when: zfs_create.rc == 0
-
-    - name: Ensure log directory structure exists under new path
-      ansible.builtin.file:
-        path: "{{ log_root }}/{{ item }}"
-        state: directory
-        mode: "0755"
-      loop:
-        - nodes
-        - pods
-
-    - name: Ensure jail fstab mounts new log path at /mnt/logs
-      ansible.builtin.lineinfile:
-        path: "{{ jail_fstab }}"
-        regexp: '^\S+\s+{{ jail_root }}/mnt/logs'
-        line: "{{ log_root }}\t{{ jail_root }}/mnt/logs\tnullfs\tro\t0\t0"
-        create: true
-        mode: "0644"
-      notify: Remount jail logs
-
-    - name: Deploy syslog-ng config to jail
+    - name: Render syslog-ng config locally
       ansible.builtin.template:
-        src: "{{ syslogng_conf_src }}"
-        dest: "{{ syslogng_conf_dst }}"
-        owner: root
-        group: wheel
+        src: "{{ playbook_dir }}/../templates/syslog-ng.conf.j2"
+        dest: /tmp/syslog-ng.conf.staged
         mode: "0644"
-      notify: Restart syslog-ng
+      delegate_to: localhost
 
-    - name: Ensure syslog-ng is running inside the jail
-      ansible.builtin.command:
-        cmd: jexec {{ jail_name }} service syslog-ng status
-      register: syslogng_status
-      failed_when: false
-      changed_when: false
+    - name: Upload rendered config to atlas /tmp
+      ansible.builtin.copy:
+        src: /tmp/syslog-ng.conf.staged
+        dest: /tmp/syslog-ng.conf
+        mode: "0644"
 
-    - name: Start syslog-ng if not running
-      ansible.builtin.command:
-        cmd: jexec {{ jail_name }} service syslog-ng start
-      when: syslogng_status.rc != 0
-
-  handlers:
-    - name: Remount jail logs
-      ansible.builtin.command:
-        cmd: mount -a -F {{ jail_fstab }}
-      listen: Remount jail logs
-
-    - name: Restart syslog-ng
-      ansible.builtin.command:
-        cmd: jexec {{ jail_name }} service syslog-ng restart
+    - name: Root commands to apply config
+      ansible.builtin.debug:
+        msg:
+          - "Config staged at /tmp/syslog-ng.conf on atlas."
+          - "SSH to atlas, su -, then run:"
+          - ""
+          - "  zfs create -p greenlake/k3s/logs"
+          - "  mkdir -p {{ log_root }}/nodes {{ log_root }}/pods"
+          - "  cp /tmp/syslog-ng.conf {{ jail_root }}/usr/local/etc/syslog-ng.conf"
+          - "  jexec {{ jail_name }} service syslog-ng restart"
