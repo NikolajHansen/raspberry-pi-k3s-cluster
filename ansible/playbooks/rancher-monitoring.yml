@@ -1,0 +1,44 @@
+---
+- name: Deploy Rancher Monitoring
+  hosts: masters
+  become: yes
+  vars:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    monitoring_retention_value: "{{ monitoring_retention | default('3d') }}"
+  tasks:
+    - name: Add Rancher Helm repo
+      command: helm repo add rancher-charts https://charts.rancher.io --force-update
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Update Helm repos
+      command: helm repo update
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Install rancher-monitoring CRDs
+      command: >
+        helm upgrade --install rancher-monitoring-crd rancher-charts/rancher-monitoring-crd
+        --namespace cattle-monitoring-system
+        --create-namespace
+        --wait
+        --timeout 10m
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: monitoring_crd_result
+      changed_when: "'has been upgraded' in monitoring_crd_result.stdout or 'has been deployed' in monitoring_crd_result.stdout"
+
+    - name: Install rancher-monitoring
+      command: >
+        helm upgrade --install rancher-monitoring rancher-charts/rancher-monitoring
+        --namespace cattle-monitoring-system
+        --create-namespace
+        --set prometheus.prometheusSpec.retention={{ monitoring_retention_value }}
+        --wait
+        --timeout 15m
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: monitoring_result
+      changed_when: "'has been upgraded' in monitoring_result.stdout or 'has been deployed' in monitoring_result.stdout"

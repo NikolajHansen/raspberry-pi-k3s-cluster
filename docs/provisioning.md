@@ -10,7 +10,9 @@ flowchart LR
     D --> E[Deploy CoreDNS\ncustom config]
     E --> F[Install Helm\n+ cert-manager\n+ MetalLB]
     F --> G[Install Rancher]
-    G --> H[lyrion.yml\nDeploy Lyrion\nvia Helm]
+    G --> H[rancher-monitoring.yml\nDeploy Monitoring]
+    H --> I[rpi-sensors.yml\nDeploy Pi Sensor Exporter]
+    I --> J[lyrion.yml\nDeploy Lyrion\nvia Helm]
 ```
 
 ## Prerequisites
@@ -41,6 +43,8 @@ A helper script at `~/bin/k3s-ansible` unlocks Bitwarden and loads both site fil
 ```bash
 k3s-ansible                           # full cluster bootstrap (k3s-cluster.yml)
 k3s-ansible static-ips.yml           # assign static IPs
+k3s-ansible rancher-monitoring.yml   # deploy Rancher monitoring stack
+k3s-ansible rpi-sensors.yml          # deploy Raspberry Pi hardware sensor exporter
 k3s-ansible helm-apps.yml            # deploy additional Helm apps
 k3s-ansible lyrion.yml               # deploy Lyrion Music Server
 k3s-ansible botkube.yml              # deploy Botkube Slack monitoring
@@ -87,6 +91,30 @@ Then run:
 ```bash
 k3s-ansible helm-apps.yml
 ```
+
+### Deploy Rancher Monitoring
+
+```bash
+k3s-ansible rancher-monitoring.yml
+```
+
+Installs `rancher-monitoring-crd` and `rancher-monitoring` charts in `cattle-monitoring-system`.
+Optional tuning in `~/k3s-site.yml`:
+
+```yaml
+monitoring_retention: 3d
+```
+
+### Deploy Raspberry Pi sensor exporter
+
+```bash
+k3s-ansible rpi-sensors.yml
+```
+
+Deploys a DaemonSet and PodMonitor in `cattle-monitoring-system` so Prometheus scrapes:
+- `rpi_cpu_temperature_celsius`
+- `rpi_firmware_throttled_status`
+- `rpi_firmware_throttled_current`
 
 ### Deploy Lyrion
 

@@ -28,11 +28,14 @@ A 10-node Kubernetes cluster running on Raspberry Pi hardware, provisioned with 
 │   ├── playbooks/
 │   │   ├── k3s-cluster.yml          # Full cluster bootstrap
 │   │   ├── static-ips.yml           # Assign static IPs via NetworkManager
+│   │   ├── rancher-monitoring.yml   # Deploy Rancher Monitoring (Prometheus/Grafana)
+│   │   ├── rpi-sensors.yml          # Deploy Raspberry Pi temp/throttling exporter
 │   │   ├── lyrion.yml               # Deploy Lyrion Music Server
 │   │   ├── botkube.yml              # Deploy Botkube Slack monitoring
 │   │   └── helm-apps.yml            # Deploy additional Helm chart applications
 │   └── templates/
-│       └── coredns-custom.yaml.j2   # CoreDNS custom ConfigMap template
+│       ├── coredns-custom.yaml.j2   # CoreDNS custom ConfigMap template
+│       └── rpi-sensor-exporter.yaml.j2
 ├── docs/
 │   ├── architecture.md
 │   ├── provisioning.md
@@ -65,7 +68,11 @@ k3s-ansible k3s-cluster.yml
 # 4. Deploy Lyrion
 k3s-ansible lyrion.yml
 
-# 5. (Optional) Deploy Botkube Slack monitoring
+# 5. (Optional) Deploy Rancher Monitoring + Raspberry Pi sensors
+k3s-ansible rancher-monitoring.yml
+k3s-ansible rpi-sensors.yml
+
+# 6. (Optional) Deploy Botkube Slack monitoring
 k3s-ansible botkube.yml
 ```
 
@@ -76,3 +83,4 @@ k3s-ansible botkube.yml
 - [x] ZFS snapshot backup/restore for Lyrion
 - [x] Botkube Slack monitoring for pod crashes/restarts
 - [x] Helm chart for Lyrion (replaced Jinja template)
+- [x] Rancher monitoring + Raspberry Pi hardware sensors

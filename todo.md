@@ -45,6 +45,36 @@ Move the k3s cluster nodes from the main LAN to a dedicated cluster VLAN, with a
 
 ---
 
+## Centralized Logging — Atlas syslog receiver (Phase 1)
+
+The Ansible playbook `ansible/playbooks/remote-logging.yml` configures rsyslog
+forwarding on all cluster nodes. Run with:
+```
+k3s-ansible remote-logging.yml
+```
+Set `syslog_server: 192.168.1.26` in `~/k3s-site.yml` (the syslog jail IP on atlas).
+
+**Atlas-side receiver is complete** — set up via `scripts/atlas-syslog-jail-setup.sh`.
+
+- [x] Create ZFS dataset on atlas: `zfs create greenlake/logs/k3s-cluster` (at `/greenlake/logs/k3s-cluster`)
+- [x] Create FreeBSD jail on atlas for the syslog receiver (`syslog.barnabas.dk`, IP `192.168.1.26`)
+- [x] Install syslog-ng inside the jail (pkg install syslog-ng)
+- [x] Configure syslog-ng receiver on TCP 514 writing per-host daily log files
+      to `/greenlake/logs/k3s-cluster/<hostname>/YYYY-MM-DD.log`
+- [ ] Add `newsyslog.conf` entry on atlas to rotate logs daily, retain 30 days compressed
+- [ ] Add DNS entry for `syslog.example.com` → jail IP (so nodes can resolve it)
+- [ ] Add `syslog_server: syslog.barnabas.dk` to `~/k3s-site.yml`
+- [ ] Run `k3s-ansible remote-logging.yml` and verify journal entries appear in
+      `/greenlake/logs/k3s-cluster/` on atlas
+
+### Phase 2 — pod log aggregation (Loki) — deferred until post-VLAN migration
+
+- [ ] Install Loki on atlas (jail or standalone binary) backed by `tank/logs/k3s-cluster`
+- [ ] Deploy Vector or Promtail DaemonSet on the cluster forwarding pod logs to atlas Loki
+- [ ] Add Loki datasource to Rancher Monitoring Grafana
+
+---
+
 ## Other
 
 - [ ] Rename Botkube Slack app from "Demo App" to "Botkube" (delete and recreate in Slack app portal — username cannot be changed after creation)

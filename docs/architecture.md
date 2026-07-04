@@ -21,6 +21,8 @@ All nodes run **Raspberry Pi OS Lite** (Debian 12 Bookworm, 64-bit, headless).
 | [MetalLB](https://metallb.universe.tf) | Bare-metal load balancer (L2 mode) |
 | [CoreDNS](https://coredns.io) | Kubernetes cluster DNS (k3s default, forwards to pfSense) |
 | [NetworkManager](https://networkmanager.dev) | Static IP management on nodes |
+| [Rancher Monitoring](https://github.com/rancher/charts/tree/main/charts/rancher-monitoring) | Prometheus/Grafana observability stack in Rancher |
+| Raspberry Pi sensor exporter | Per-node temperature and firmware throttling metrics for Prometheus |
 | [Botkube](https://botkube.io) | Kubernetes event monitoring with Slack alerts |
 | [Lyrion Music Server](https://lyrion.org) | Music streaming server (Squeezebox compatible) |
 | [Bitwarden CLI](https://bitwarden.com/help/cli/) | Secrets management for Ansible |

@@ -1,0 +1,23 @@
+---
+- name: Deploy Raspberry Pi sensor exporter
+  hosts: masters
+  become: yes
+  vars:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  tasks:
+    - name: Render rpi-sensor-exporter manifest
+      template:
+        src: ../templates/rpi-sensor-exporter.yaml.j2
+        dest: /tmp/rpi-sensor-exporter.yaml
+
+    - name: Apply rpi-sensor-exporter resources
+      command: kubectl --kubeconfig {{ kubeconfig }} apply -f /tmp/rpi-sensor-exporter.yaml
+      register: rpi_sensor_apply
+      changed_when: "'configured' in rpi_sensor_apply.stdout or 'created' in rpi_sensor_apply.stdout"
+
+    - name: Wait for rpi-sensor-exporter DaemonSet rollout
+      command: >
+        kubectl --kubeconfig {{ kubeconfig }}
+        -n cattle-monitoring-system
+        rollout status daemonset/rpi-sensor-exporter --timeout=180s
+      changed_when: false

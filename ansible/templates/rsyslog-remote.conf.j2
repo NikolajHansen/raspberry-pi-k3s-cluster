@@ -1,0 +1,39 @@
+# /etc/rsyslog.d/90-remote.conf — managed by Ansible, do not edit manually.
+#
+# Forwards node and k3s journal logs to the central syslog receiver at
+# {{ syslog_server }}:514 over TCP.
+#
+# See docs/logging.md for full architecture details.
+
+# ── Inputs ────────────────────────────────────────────────────────────────────
+
+# Read from the systemd journal (captures k3s, k3s-agent, containerd, and all
+# other systemd units including their stdout/stderr).
+module(load="imjournal"
+       StateFile="/var/lib/rsyslog/imjournal.state"
+       IgnorePreviousMessages="off"
+       Ratelimit.Burst="20000"
+       Ratelimit.Interval="600")
+
+# ── Output: TCP forwarding ────────────────────────────────────────────────────
+
+# Use an action queue so messages are buffered in memory (not on disk) when the
+# remote is temporarily unreachable. This preserves the stateless-node property.
+action(type="omfwd"
+       Target="{{ syslog_server }}"
+       Port="514"
+       Protocol="tcp"
+       Template="RSYSLOG_ForwardFormat"
+       queue.type="LinkedList"
+       queue.size="10000"
+       queue.saveOnShutdown="off"
+       action.resumeRetryCount="-1"
+       action.resumeInterval="30"
+       filter.f_expression="prifilt('*.warn') or
+         ($syslogseverity <= 5) or
+         ($programname == 'k3s') or
+         ($programname == 'k3s-agent') or
+         ($programname == 'containerd') or
+         ($syslogfacility-text == 'kern') or
+         ($syslogfacility-text == 'auth') or
+         ($syslogfacility-text == 'authpriv')")

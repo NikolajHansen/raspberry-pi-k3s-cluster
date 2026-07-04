@@ -186,18 +186,37 @@ spec:
                       sleep 1
                     done
                     sync
-          readinessProbe:
+          # Startup probe gives Lyrion time to fully initialise before liveness
+          # kicks in. Allows up to 30 + 12*10 = 150 seconds on a cold start.
+          startupProbe:
             httpGet:
               path: /
               port: 9000
             initialDelaySeconds: 30
             periodSeconds: 10
+            failureThreshold: 12
+          # Readiness calls the JSON-RPC serverstatus endpoint so we only send
+          # traffic once the database and server core are confirmed alive.
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - |
+                  curl -s -f --max-time 5 -X POST http://127.0.0.1:9000/jsonrpc.js \
+                    -H 'Content-Type: application/json' \
+                    -d '{"id":1,"method":"slim.request","params":["",["serverstatus","0","1"]]}' \
+                    | grep -q '"version"'
+            initialDelaySeconds: 45
+            periodSeconds: 15
             failureThreshold: 3
+          # Liveness stays cheap — just checks the web UI is alive. The startup
+          # probe above absorbs slow-start pressure so this delay can be longer.
           livenessProbe:
             httpGet:
               path: /
               port: 9000
-            initialDelaySeconds: 60
+            initialDelaySeconds: 90
             periodSeconds: 30
             failureThreshold: 5
           volumeMounts:

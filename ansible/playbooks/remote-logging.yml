@@ -1,0 +1,50 @@
+---
+# Forward node and k3s journal logs to a central remote syslog receiver.
+#
+# Site variable (set in ~/k3s-site.yml):
+#   syslog_server: syslog.barnabas.dk   # FQDN of the syslog jail on atlas
+#
+# The receiver jail on atlas is set up via scripts/atlas-syslog-jail-setup.sh.
+# See docs/logging.md for full architecture and atlas-side setup.
+
+- name: Configure rsyslog remote forwarding on all cluster nodes
+  hosts: all
+  become: true
+  vars:
+    syslog_server: "{{ lookup('vars', 'syslog_server', default='syslog.example.com') }}"
+    rsyslog_dropin: /etc/rsyslog.d/90-remote.conf
+
+  tasks:
+    - name: Ensure rsyslog is installed
+      ansible.builtin.package:
+        name: rsyslog
+        state: present
+
+    - name: Ensure rsyslog state directory exists
+      ansible.builtin.file:
+        path: /var/lib/rsyslog
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Deploy remote forwarding drop-in config
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/rsyslog-remote.conf.j2"
+        dest: "{{ rsyslog_dropin }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart rsyslog
+
+    - name: Ensure rsyslog is enabled and started
+      ansible.builtin.service:
+        name: rsyslog
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Restart rsyslog
+      ansible.builtin.service:
+        name: rsyslog
+        state: restarted
