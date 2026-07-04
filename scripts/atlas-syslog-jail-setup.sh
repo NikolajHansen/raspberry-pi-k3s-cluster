@@ -3,7 +3,7 @@
 # Run as root. Idempotent — safe to re-run.
 #
 # What this does:
-#   1. Creates ZFS dataset greenlake/logs/k3s-cluster
+#   1. Creates ZFS dataset greenlake/k3s/logs
 #   2. Creates jail directory/symlink structure at /area51/jails/syslog.example.com
 #   3. Populates /etc from basejail and rebuilds passwd db
 #   4. Creates /etc/jail.conf.d/syslog.conf  (IP 10.0.0.25)
@@ -16,7 +16,8 @@
 #   k3s-ansible remote-logging.yml
 #
 # Cluster nodes forward logs to 10.0.0.25:514 (TCP).
-# Log files: /greenlake/logs/k3s-cluster/<hostname>/YYYY-MM-DD.log
+# Node logs : /greenlake/k3s/logs/nodes/<hostname>/YYYY-MM-DD.log
+# Pod logs  : /greenlake/k3s/logs/pods/<namespace>/<podname>/YYYY-MM-DD.log
 
 set -e
 
@@ -26,8 +27,8 @@ JAIL_IP="10.0.0.26"
 JAIL_LO="127.0.0.9"
 JAIL_ROOT="/area51/jails/${JAIL_HOST}"
 BASEJAIL="/area51/jails/basejail"
-ZFS_DATASET="greenlake/logs/k3s-cluster"
-LOG_MOUNT="/greenlake/logs/k3s-cluster"
+ZFS_DATASET="greenlake/k3s/logs"
+LOG_MOUNT="/greenlake/k3s/logs"
 LOG_MOUNT_IN_JAIL="/mnt/logs"
 
 echo "==> Checking prerequisites..."
@@ -205,29 +206,70 @@ source s_tcp {
     );
 };
 
-destination d_hosts {
+# Parse [namespace/podname] prefix embedded by rsyslog from pod log messages.
+parser p_k8s_pod {
+    regexp-parser(
+        regexp("^\[(?P<ns>[^/\]]+)/(?P<pod>[^\]]+)\] ?")
+        template("${MSG}")
+        prefix(".pod.")
+        flags(store-matches)
+    );
+};
+
+# Node journal logs — one file per host
+destination d_nodes {
     file(
-        "/mnt/logs/$HOST/$YEAR-$MONTH-$DAY.log"
+        "/mnt/logs/nodes/$HOST/$YEAR-$MONTH-$DAY.log"
         create_dirs(yes)
         template("${ISODATE} ${HOST} ${MSGHDR}${MSG}\n")
     );
 };
 
-destination d_all {
+# Pod logs — one file per namespace/podname
+destination d_pods {
     file(
-        "/mnt/logs/all/$YEAR-$MONTH-$DAY.log"
+        "/mnt/logs/pods/${.pod.ns}/${.pod.pod}/$YEAR-$MONTH-$DAY.log"
+        create_dirs(yes)
+        template("${ISODATE} ${HOST} ${MSG}\n")
+    );
+};
+
+# Fallback for pod messages that failed [ns/pod] parsing
+destination d_pods_unknown {
+    file(
+        "/mnt/logs/pods/_unparsed/$HOST/$YEAR-$MONTH-$DAY.log"
         create_dirs(yes)
         template("${ISODATE} ${HOST} ${MSGHDR}${MSG}\n")
     );
 };
 
+# Pod logs arrive tagged "k8s-pod" on facility local6
+filter f_k8s { facility(local6); };
+filter f_k8s_parsed { match("." value(".pod.ns")); };
+
+# Route pod logs per namespace/pod; fallback for unparseable
 log {
     source(s_tcp);
-    destination(d_hosts);
-    destination(d_all);
+    filter(f_k8s);
+    parser(p_k8s_pod);
+    if (filter(f_k8s_parsed)) {
+        destination(d_pods);
+    } else {
+        destination(d_pods_unknown);
+    };
+    flags(final);
+};
+
+# Node/system logs
+log {
+    source(s_tcp);
+    destination(d_nodes);
 };
 EOF
 echo "    syslog-ng.conf written."
+
+# Ensure log dir structure exists
+mkdir -p "${LOG_MOUNT}/nodes" "${LOG_MOUNT}/pods"
 
 # ---------------------------------------------------------------------------
 echo "==> Step 12: Start/restart syslog-ng inside jail..."
@@ -246,8 +288,8 @@ else
 # Rotate k3s cluster syslog files daily, keep 30 days compressed.
 # Paths are on the host (ZFS dataset); syslog-ng writes them inside the jail
 # via the nullfs mount at ${JAIL_ROOT}${LOG_MOUNT_IN_JAIL}.
-${LOG_MOUNT}/all/*.log           644  30  *  @T00  JC
-${LOG_MOUNT}/*/*.log             644  30  *  @T00  JC
+${LOG_MOUNT}/nodes/*/*.log           644  30  *  @T00  JC
+${LOG_MOUNT}/pods/*/*/*.log          644  30  *  @T00  JC
 EOF
   echo "    Written. Logs rotate daily, 30-day retention."
 fi
@@ -257,12 +299,13 @@ echo ""
 echo "=================================================================="
 echo "  Syslog jail is up!"
 echo "  Jail IP  : ${JAIL_IP}"
-echo "  Logs     : ${LOG_MOUNT}/<hostname>/YYYY-MM-DD.log"
-echo "  Combined : ${LOG_MOUNT}/all/YYYY-MM-DD.log"
+echo "  Node logs: ${LOG_MOUNT}/nodes/<host>/YYYY-MM-DD.log"
+echo "  Pod logs : ${LOG_MOUNT}/pods/<namespace>/<pod>/YYYY-MM-DD.log"
 echo ""
 echo "  Next steps:"
 echo "    1. Add DNS entry: syslog.${JAIL_HOST#*.} → ${JAIL_IP} (in pfSense/Unbound/hosts)"
 echo "    2. Add to ~/k3s-site.yml: syslog_server: syslog.${JAIL_HOST#*.}"
 echo "    3. Run: k3s-ansible remote-logging.yml"
-echo "    4. Tail: tail -f ${LOG_MOUNT}/all/\$(date +%Y-%m-%d).log"
+echo "    4. Node logs : tail -f ${LOG_MOUNT}/nodes/<host>/\$(date +%Y-%m-%d).log"
+echo "    5. Pod logs  : tail -f ${LOG_MOUNT}/pods/<namespace>/<pod>/\$(date +%Y-%m-%d).log"
 echo "=================================================================="
