@@ -364,15 +364,16 @@ spec:
     - name: rpi-sensors
       interval: 60s
       rules:
-        # Temperature warnings
         - alert: RpiTemperatureHigh
           expr: rpi_cpu_temperature_celsius > 75
           for: 2m
           labels:
             severity: warning
           annotations:
-            summary: "Raspberry Pi {{ '{{$labels.pod}}' }} temperature high"
-            description: "Node {{ '{{$labels.pod}}' }} CPU temperature is {{ '{{$value | printf \"%.1f\"}}' }}°C (threshold 75°C)."
+            summary: |-
+              Raspberry Pi {{ '{{$labels.pod}}' }} temperature high
+            description: |-
+              Node {{ '{{$labels.pod}}' }} CPU temperature is {{ '{{$value | printf "%.1f"}}' }}°C (threshold 75°C).
 
         - alert: RpiTemperatureCritical
           expr: rpi_cpu_temperature_celsius > 80
@@ -380,8 +381,10 @@ spec:
           labels:
             severity: critical
           annotations:
-            summary: "Raspberry Pi {{ '{{$labels.pod}}' }} temperature critical"
-            description: "Node {{ '{{$labels.pod}}' }} CPU temperature is {{ '{{$value | printf \"%.1f\"}}' }}°C (threshold 80°C). Risk of thermal throttling or shutdown."
+            summary: |-
+              Raspberry Pi {{ '{{$labels.pod}}' }} temperature critical
+            description: |-
+              Node {{ '{{$labels.pod}}' }} CPU temperature is {{ '{{$value | printf "%.1f"}}' }}°C (threshold 80°C). Risk of thermal throttling or shutdown.
 
         # Active throttling (bits 0-3 of get_throttled)
         - alert: RpiThrottlingActive
@@ -390,8 +393,10 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Raspberry Pi {{ '{{$labels.pod}}' }} is actively throttled"
-            description: "Node {{ '{{$labels.pod}}' }} firmware throttling flags are set (current bitmask 0x{{ '{{$value | printf \"%x\"}}' }}). Possible causes: undervoltage, overtemperature, or frequency capping."
+            summary: |-
+              Raspberry Pi {{ '{{$labels.pod}}' }} is actively throttled
+            description: |-
+              Node {{ '{{$labels.pod}}' }} firmware throttling flags are set (current bitmask 0x{{ '{{$value | printf "%x"}}' }}). Possible causes: undervoltage, overtemperature, or frequency capping.
 
         # Historical throttling since last boot (bits 16-19 of full status)
         - alert: RpiThrottledSinceBoot
@@ -400,8 +405,10 @@ spec:
           labels:
             severity: info
           annotations:
-            summary: "Raspberry Pi {{ '{{$labels.pod}}' }} has throttled since last boot"
-            description: "Node {{ '{{$labels.pod}}' }} has experienced undervoltage, frequency capping, or thermal throttling since last boot (historical bits set in get_throttled)."
+            summary: |-
+              Raspberry Pi {{ '{{$labels.pod}}' }} has throttled since last boot
+            description: |-
+              Node {{ '{{$labels.pod}}' }} has experienced undervoltage, frequency capping, or thermal throttling since last boot (historical bits set in get_throttled).
 
         # Metric missing / exporter down
         - alert: RpiThrottledMetricMissing
@@ -429,5 +436,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "rpi_firmware_throttled_status is NaN on {{ '{{$labels.pod}}' }}"
-            description: "The get_throttled sysfs path could not be read on node {{ '{{$labels.pod}}' }}. The kernel may expose it at a different path. Check /sys/devices/platform/soc/*/get_throttled on the node."
+            summary: |-
+              rpi_firmware_throttled_status is NaN on {{ '{{$labels.pod}}' }}
+            description: |-
+              The get_throttled sysfs path could not be read on node {{ '{{$labels.pod}}' }}. The kernel may expose it at a different path. Check /sys/devices/platform/soc/*/get_throttled on the node.
