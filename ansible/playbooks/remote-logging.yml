@@ -1,5 +1,6 @@
 ---
 # Forward node and k3s journal logs to a central remote syslog receiver.
+# Also switches journald to volatile (RAM-only) storage to protect SD cards.
 #
 # Site variable (set in ~/k3s-site.yml):
 #   syslog_server: syslog.barnabas.dk   # FQDN of the syslog jail on atlas
@@ -9,6 +10,7 @@
 
 - name: Configure rsyslog remote forwarding on all cluster nodes
   hosts: all
+  limit: "masters,workers"
   become: true
   vars:
     syslog_server: "{{ lookup('vars', 'syslog_server', default='syslog.example.com') }}"
@@ -37,6 +39,23 @@
         mode: "0644"
       notify: Restart rsyslog
 
+    - name: Switch journald to volatile (RAM-only) storage to protect SD cards
+      ansible.builtin.lineinfile:
+        path: /etc/systemd/journald.conf
+        regexp: '^#?Storage='
+        line: 'Storage=volatile'
+      notify:
+        - Restart journald
+        - Restart rsyslog
+
+    - name: Ensure journald runtime log dir exists in RAM
+      ansible.builtin.file:
+        path: /run/log/journal
+        state: directory
+        owner: root
+        group: systemd-journal
+        mode: "02755"
+
     - name: Ensure rsyslog is enabled and started
       ansible.builtin.service:
         name: rsyslog
@@ -44,6 +63,11 @@
         state: started
 
   handlers:
+    - name: Restart journald
+      ansible.builtin.service:
+        name: systemd-journald
+        state: restarted
+
     - name: Restart rsyslog
       ansible.builtin.service:
         name: rsyslog
