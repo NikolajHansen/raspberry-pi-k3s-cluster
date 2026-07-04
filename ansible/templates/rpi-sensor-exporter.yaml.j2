@@ -109,7 +109,7 @@ spec:
         - operator: Exists
       containers:
         - name: exporter
-          image: python:3.12-alpine
+          image: python:3.12-slim
           command: ["python", "/app/exporter.py"]
           env:
             - name: PYTHONDONTWRITEBYTECODE
