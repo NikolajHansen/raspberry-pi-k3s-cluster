@@ -72,17 +72,26 @@ A glibc binary cannot run in a musl container because:
 The image therefore uses `python:3.12-slim` (Debian Bookworm, glibc) so
 the host `vcgencmd` binary runs correctly via the `/host-usr` volume mount.
 
-### Volume mounts
+### Volume mounts and security context
 
-The DaemonSet mounts two host paths:
+The DaemonSet mounts two host paths and requires a privileged security context:
 
 | Mount | Host path | Container path | Purpose |
 |-------|-----------|----------------|---------|
 | `vcio` | `/dev/vcio` | `/dev/vcio` | VideoCore mailbox character device — required by `vcgencmd` |
 | `host-usr` | `/usr` | `/host-usr` | Provides `vcgencmd` binary and its shared libraries (`libvchiq_arm.so`, etc.) |
 
-The `vcio` device is mounted as type `CharDevice` with `hostNetwork: true`
-not required — the DaemonSet does not use host networking.
+The container runs with **`privileged: true`**.  This is required because:
+
+Raspberry Pi OS uses **cgroups v2** with eBPF-based device access control.
+Bind-mounting `/dev/vcio` into the container as a `hostPath` volume is not
+sufficient — containerd's device whitelist (enforced via eBPF) blocks `open()`
+on the device with `EPERM` regardless of DAC permissions.  Setting
+`privileged: true` bypasses the eBPF device filter, allowing vcgencmd to open
+the VideoCore mailbox.
+
+This pod already has full read access to the host `/usr` tree; the privilege
+escalation scope is no wider than what the existing mounts already imply.
 
 ### Deploy / update
 
