@@ -19,5 +19,5 @@
       command: >
         kubectl --kubeconfig {{ kubeconfig }}
         -n cattle-monitoring-system
-        rollout status daemonset/rpi-sensor-exporter --timeout=180s
+        rollout status daemonset/rpi-sensor-exporter --timeout=600s
       changed_when: false
