@@ -1,0 +1,101 @@
+# /usr/local/etc/syslog-ng.conf — managed by Ansible, do not edit manually.
+# Deployed via ansible/playbooks/atlas-syslog-config.yml
+
+@version: 4.8
+@include "scl.conf"
+
+options {
+    flush_lines(0);
+    time_reopen(10);
+    log_fifo_size(1000);
+    chain_hostnames(no);
+    use_dns(no);
+    use_fqdn(no);
+    keep_hostname(yes);
+    create_dirs(yes);
+    dir_perm(0755);
+    perm(0640);
+};
+
+source s_tcp {
+    network(
+        ip("0.0.0.0")
+        port(514)
+        transport("tcp")
+        max_connections(50)
+        so_keepalive(yes)
+    );
+};
+
+# ── Parsers ───────────────────────────────────────────────────────────────────
+
+# Extract [namespace/podname] prefix embedded by rsyslog from pod log messages.
+# rsyslog template PodLogFwd emits: "k8s-pod: [namespace/pod] original message"
+# On parse failure the message falls through without .pod.* fields set.
+parser p_k8s_pod {
+    regexp-parser(
+        regexp("^\[(?P<ns>[^/\]]+)/(?P<pod>[^\]]+)\] ?")
+        template("${MSG}")
+        prefix(".pod.")
+        flags(store-matches)
+    );
+};
+
+# ── Destinations ──────────────────────────────────────────────────────────────
+
+# Node journal logs — one file per host, YYYY-MM-DD.log
+destination d_nodes {
+    file(
+        "/mnt/logs/nodes/$HOST/$YEAR-$MONTH-$DAY.log"
+        create_dirs(yes)
+        template("${ISODATE} ${HOST} ${MSGHDR}${MSG}\n")
+    );
+};
+
+# Pod logs — one file per namespace/podname, YYYY-MM-DD.log
+# ${.pod.ns} and ${.pod.pod} are populated by p_k8s_pod parser.
+destination d_pods {
+    file(
+        "/mnt/logs/pods/${.pod.ns}/${.pod.pod}/$YEAR-$MONTH-$DAY.log"
+        create_dirs(yes)
+        template("${ISODATE} ${HOST} ${MSG}\n")
+    );
+};
+
+# Fallback for pod messages that failed [ns/pod] parsing
+destination d_pods_unknown {
+    file(
+        "/mnt/logs/pods/_unparsed/$HOST/$YEAR-$MONTH-$DAY.log"
+        create_dirs(yes)
+        template("${ISODATE} ${HOST} ${MSGHDR}${MSG}\n")
+    );
+};
+
+# ── Filters ───────────────────────────────────────────────────────────────────
+
+# Pod logs arrive tagged "k8s-pod" on facility local6.
+filter f_k8s { facility(local6); };
+
+# Pod successfully parsed — has a namespace extracted.
+filter f_k8s_parsed { match("." value(".pod.ns")); };
+
+# ── Log paths ─────────────────────────────────────────────────────────────────
+
+# 1. Pod logs: parse [ns/pod] prefix, route per-pod; unparseable go to fallback.
+log {
+    source(s_tcp);
+    filter(f_k8s);
+    parser(p_k8s_pod);
+    if (filter(f_k8s_parsed)) {
+        destination(d_pods);
+    } else {
+        destination(d_pods_unknown);
+    };
+    flags(final);
+};
+
+# 2. Node/system logs: everything else routed per host.
+log {
+    source(s_tcp);
+    destination(d_nodes);
+};
