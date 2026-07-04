@@ -33,3 +33,7 @@ all:
     node09:
       ansible_host: 10.0.0.59
       static_ip: 10.0.0.59
+    atlas:
+      ansible_host: 10.0.0.20
+      ansible_user: nikolaj
+      ansible_python_interpreter: /usr/local/bin/python3

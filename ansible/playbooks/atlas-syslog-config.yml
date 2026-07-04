@@ -1,0 +1,56 @@
+---
+# Configure the syslog-ng receiver jail on atlas (FreeBSD).
+# Manages the syslog-ng config and log directory layout.
+#
+# Run with: k3s-ansible atlas-syslog-config.yml
+# Or directly:
+#   ansible-playbook -i ansible/inventory/groups.yml -i ~/k3s-inventory.yml \
+#     -e @~/k3s-site.yml ansible/playbooks/atlas-syslog-config.yml
+
+- name: Configure syslog-ng on atlas syslog jail
+  hosts: atlas
+  become: true
+  vars:
+    log_root: /greenlake/logs/k3s-cluster
+    jail_name: syslog
+    jail_root: /area51/jails/syslog.barnabas.dk
+    syslogng_conf_src: "{{ playbook_dir }}/../templates/syslog-ng.conf.j2"
+    syslogng_conf_dst: "{{ jail_root }}/usr/local/etc/syslog-ng.conf"
+
+  tasks:
+    - name: Ensure log directory structure exists
+      ansible.builtin.file:
+        path: "{{ log_root }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - nodes
+        - nodes/all
+        - pods
+        - pods/all
+
+    - name: Deploy syslog-ng config to jail
+      ansible.builtin.template:
+        src: "{{ syslogng_conf_src }}"
+        dest: "{{ syslogng_conf_dst }}"
+        owner: root
+        group: wheel
+        mode: "0644"
+      notify: Restart syslog-ng
+
+    - name: Ensure syslog-ng is running inside the jail
+      ansible.builtin.command:
+        cmd: jexec {{ jail_name }} service syslog-ng status
+      register: syslogng_status
+      failed_when: false
+      changed_when: false
+
+    - name: Start syslog-ng if not running
+      ansible.builtin.command:
+        cmd: jexec {{ jail_name }} service syslog-ng start
+      when: syslogng_status.rc != 0
+
+  handlers:
+    - name: Restart syslog-ng
+      ansible.builtin.command:
+        cmd: jexec {{ jail_name }} service syslog-ng restart

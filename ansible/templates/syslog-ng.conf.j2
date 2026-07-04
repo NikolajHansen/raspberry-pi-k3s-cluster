@@ -1,0 +1,79 @@
+# /usr/local/etc/syslog-ng.conf — managed by Ansible, do not edit manually.
+# Deployed via ansible/playbooks/atlas-syslog-config.yml
+
+@version: 4.8
+@include "scl.conf"
+
+options {
+    flush_lines(0);
+    time_reopen(10);
+    log_fifo_size(1000);
+    chain_hostnames(no);
+    use_dns(no);
+    use_fqdn(no);
+    keep_hostname(yes);
+    create_dirs(yes);
+    dir_perm(0755);
+    perm(0640);
+};
+
+source s_tcp {
+    network(
+        ip("0.0.0.0")
+        port(514)
+        transport("tcp")
+        max_connections(50)
+        so_keepalive(yes)
+    );
+};
+
+# Node journal logs — per host and combined
+destination d_hosts {
+    file(
+        "/mnt/logs/nodes/$HOST/$YEAR-$MONTH-$DAY.log"
+        create_dirs(yes)
+        template("${ISODATE} ${HOST} ${MSGHDR}${MSG}\n")
+    );
+};
+
+destination d_all {
+    file(
+        "/mnt/logs/nodes/all/$YEAR-$MONTH-$DAY.log"
+        create_dirs(yes)
+        template("${ISODATE} ${HOST} ${MSGHDR}${MSG}\n")
+    );
+};
+
+# Kubernetes pod logs (facility local6, tagged k8s-pod by rsyslog imfile)
+destination d_k8s {
+    file(
+        "/mnt/logs/pods/$HOST/$YEAR-$MONTH-$DAY.log"
+        create_dirs(yes)
+        template("${ISODATE} ${HOST} ${MSGHDR}${MSG}\n")
+    );
+};
+
+destination d_k8s_all {
+    file(
+        "/mnt/logs/pods/all/$YEAR-$MONTH-$DAY.log"
+        create_dirs(yes)
+        template("${ISODATE} ${HOST} ${MSGHDR}${MSG}\n")
+    );
+};
+
+# Route pod logs separately (local6 facility set by rsyslog imfile input)
+filter f_k8s { facility(local6); };
+
+log {
+    source(s_tcp);
+    filter(f_k8s);
+    destination(d_k8s);
+    destination(d_k8s_all);
+    flags(final);
+};
+
+log {
+    source(s_tcp);
+    destination(d_hosts);
+    destination(d_all);
+};
