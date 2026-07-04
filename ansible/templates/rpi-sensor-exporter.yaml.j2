@@ -18,28 +18,31 @@ data:
         return None
 
     def read_throttled_status():
-      import glob as _glob
+      import subprocess, glob as _glob, os
 
-      # Fixed paths tried first (fastest, no glob overhead)
-      fixed_paths = [
+      # Preferred: vcgencmd via the host binary (needs /dev/vcio mounted)
+      vcgencmd = "/host-usr/bin/vcgencmd"
+      if os.path.exists(vcgencmd):
+        try:
+          out = subprocess.check_output(
+            [vcgencmd, "get_throttled"],
+            env={"LD_LIBRARY_PATH": "/host-usr/lib"},
+            timeout=2, stderr=subprocess.DEVNULL
+          ).decode().strip()
+          # output: "throttled=0x0"
+          if "=" in out:
+            return int(out.split("=", 1)[1], 16)
+        except Exception:
+          pass
+
+      # Fallback: sysfs (older kernels / Pi 5)
+      for path in [
         "/host-sys/devices/platform/soc/soc:firmware/get_throttled",
         "/host-sys/devices/platform/soc/firmware/get_throttled",
-      ]
-      for path in fixed_paths:
+        *_glob.glob("/host-sys/devices/platform/soc/*/get_throttled"),
+      ]:
         try:
           with open(path, "r", encoding="utf-8") as f:
-            raw = f.read().strip()
-            if "=" in raw:
-              raw = raw.split("=", 1)[1]
-            return int(raw, 16)
-        except Exception:
-          continue
-
-      # Glob search covers kernel variants where the soc node name differs
-      # (e.g. Pi 5 / 6.x kernels expose it under a different soc child node)
-      for candidate in _glob.glob("/host-sys/devices/platform/soc/*/get_throttled"):
-        try:
-          with open(candidate, "r", encoding="utf-8") as f:
             raw = f.read().strip()
             if "=" in raw:
               raw = raw.split("=", 1)[1]
@@ -126,6 +129,11 @@ spec:
             - name: host-sys
               mountPath: /host-sys
               readOnly: true
+            - name: host-usr
+              mountPath: /host-usr
+              readOnly: true
+            - name: vcio
+              mountPath: /dev/vcio
       volumes:
         - name: exporter-script
           configMap:
@@ -134,6 +142,14 @@ spec:
           hostPath:
             path: /sys
             type: Directory
+        - name: host-usr
+          hostPath:
+            path: /usr
+            type: Directory
+        - name: vcio
+          hostPath:
+            path: /dev/vcio
+            type: CharDevice
 ---
 apiVersion: v1
 kind: Service
