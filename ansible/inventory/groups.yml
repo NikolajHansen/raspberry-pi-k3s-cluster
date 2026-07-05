@@ -17,7 +17,7 @@ all:
     nas:
       hosts:
         atlas:
-          ansible_become_password: "{{ lookup('community.general.bitwarden', 'nikolaj user on atlas') | trim }}"
+          ansible_user: nikolaj
           ansible_pipelining: false
   vars:
     ansible_user: system

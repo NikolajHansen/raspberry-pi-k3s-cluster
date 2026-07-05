@@ -4,3 +4,4 @@ ansible/inventory/inventory.yml
 ansible/inventory/hosts.yml
 k3s-site.yml
 k3s-inventory.yml
+ansible/pwd.txt

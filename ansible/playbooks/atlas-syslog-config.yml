@@ -10,7 +10,9 @@
 - name: Configure syslog-ng on atlas syslog jail
   hosts: atlas
   become: true
+  gather_facts: false
   vars:
+    ansible_become_password: "{{ lookup('community.general.bitwarden', 'nikolaj user on atlas') }}"
     log_root: /greenlake/k3s/logs
     jail_name: syslog
     jail_root: /area51/jails/syslog.barnabas.dk
@@ -20,11 +22,9 @@
 
   tasks:
     - name: Ensure ZFS log dataset exists
-      ansible.builtin.command:
-        cmd: zfs create -p greenlake/k3s/logs
-      register: zfs_create
-      failed_when: zfs_create.rc != 0 and 'already exists' not in zfs_create.stderr
-      changed_when: zfs_create.rc == 0
+      community.general.zfs:
+        name: greenlake/k3s/logs
+        state: present
 
     - name: Ensure log directory structure exists under new path
       ansible.builtin.file:

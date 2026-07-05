@@ -53,7 +53,7 @@
         --set settings.clusterName={{ botkube_cluster_name }}
         --set plugins.repositories.botkube.url=https://github.com/kubeshop/botkube/releases/download/v{{ botkube_version }}/plugins-index.yaml
         --values /tmp/botkube-secrets.yaml
-        --wait --timeout 3m
+        --wait --timeout 10m
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
       register: botkube_result
