@@ -3,7 +3,7 @@
 # Also switches journald to volatile (RAM-only) storage to protect SD cards.
 #
 # Site variable (set in ~/k3s-site.yml):
-#   syslog_server: syslog.barnabas.dk   # FQDN of the syslog jail on atlas
+#   syslog_server: syslog.example.com   # FQDN of the syslog jail on atlas
 #
 # The receiver jail on atlas is set up via scripts/atlas-syslog-jail-setup.sh.
 # See docs/logging.md for full architecture and atlas-side setup.

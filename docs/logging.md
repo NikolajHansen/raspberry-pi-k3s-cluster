@@ -92,7 +92,7 @@ Atlas must be added to inventory under the `nas` group (see
 nas:
   hosts:
     atlas.example.com:
-      ansible_user: nikolaj
+      ansible_user: "{{ nas_user }}"
       ansible_python_interpreter: /usr/local/bin/python3
 ```
 

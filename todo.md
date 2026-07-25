@@ -12,11 +12,11 @@ Move the k3s cluster nodes from the main LAN to a dedicated cluster VLAN, with a
 
 ### atlas
 
-- [ ] Reconfigure the chosen NIC from current LAN alias (e.g. `192.168.1.30`) to cluster VLAN IP (e.g. `10.1.10.200`) in `/etc/rc.conf`
+- [ ] Reconfigure the chosen NIC from current LAN alias (e.g. `10.0.0.30`) to cluster VLAN IP (e.g. `10.1.10.200`) in `/etc/rc.conf`
 - [ ] NFS must remain accessible from **both** subnets (LAN clients + k3s nodes) — update ZFS `sharenfs` to include both networks:
   ```sh
-  zfs set sharenfs="-alldirs -maproot=root -network 192.168.1.0/24 -network 10.1.10.0/24" greenlake/k3s
-  zfs set sharenfs="-alldirs -maproot=root -network 192.168.1.0/24 -network 10.1.10.0/24" greenlake/media
+  zfs set sharenfs="-alldirs -maproot=root -network 10.0.0.0/24 -network 10.1.10.0/24" greenlake/k3s
+  zfs set sharenfs="-alldirs -maproot=root -network 10.0.0.0/24 -network 10.1.10.0/24" greenlake/media
   ```
 - [ ] Update `scripts/atlas-k3s-storage-setup.sh` — add `K3S_LAN_SUBNET` var alongside `K3S_SUBNET` and export to both
 - [ ] Decision: run `udpbroadcastrelay` on atlas for Squeezebox port 3483 if static server IP on Squeezeboxes is not viable
@@ -52,18 +52,18 @@ forwarding on all cluster nodes. Run with:
 ```
 k3s-ansible remote-logging.yml
 ```
-Set `syslog_server: 192.168.1.26` in `~/k3s-site.yml` (the syslog jail IP on atlas).
+Set `syslog_server: 10.0.0.26` (example) in `~/k3s-site.yml` (the syslog jail IP on atlas).
 
 **Atlas-side receiver is complete** — set up via `scripts/atlas-syslog-jail-setup.sh`.
 
 - [x] Create ZFS dataset on atlas: `zfs create greenlake/logs/k3s-cluster` (at `/greenlake/logs/k3s-cluster`)
-- [x] Create FreeBSD jail on atlas for the syslog receiver (`syslog.barnabas.dk`, IP `192.168.1.26`)
+- [x] Create FreeBSD jail on atlas for the syslog receiver (`syslog.example.com`, IP `10.0.0.26` example)
 - [x] Install syslog-ng inside the jail (pkg install syslog-ng)
 - [x] Configure syslog-ng receiver on TCP 514 writing per-host daily log files
       to `/greenlake/logs/k3s-cluster/<hostname>/YYYY-MM-DD.log`
 - [ ] Add `newsyslog.conf` entry on atlas to rotate logs daily, retain 30 days compressed
 - [ ] Add DNS entry for `syslog.example.com` → jail IP (so nodes can resolve it)
-- [ ] Add `syslog_server: syslog.barnabas.dk` to `~/k3s-site.yml`
+- [ ] Add `syslog_server: syslog.example.com` to `~/k3s-site.yml`
 - [ ] Run `k3s-ansible remote-logging.yml` and verify journal entries appear in
       `/greenlake/logs/k3s-cluster/` on atlas
 

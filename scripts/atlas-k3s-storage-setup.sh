@@ -23,7 +23,7 @@
 set -e
 
 POOL="greenlake"
-K3S_SUBNET="${K3S_SUBNET:-192.168.1.0/24}"
+K3S_SUBNET="${K3S_SUBNET:-10.0.0.0/24}"
 
 # Applications to create datasets for.
 # Add new apps here as needed — one per line.

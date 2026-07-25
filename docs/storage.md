@@ -24,10 +24,10 @@ Exports are configured via the ZFS `sharenfs` property — **not** `/etc/exports
 
 ```bash
 # k3s app storage (read-write, all cluster nodes)
-zfs set sharenfs="-alldirs -maproot=root -network 192.168.1.0/24" greenlake/k3s
+zfs set sharenfs="-alldirs -maproot=root -network 10.0.0.0/24" greenlake/k3s
 
 # Music library (read-only)
-zfs set sharenfs="-mapall=media:media -network 192.168.1.0/24" greenlake/media
+zfs set sharenfs="-mapall=media:media -network 10.0.0.0/24" greenlake/media
 ```
 
 Verify with:

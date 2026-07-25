@@ -6,7 +6,7 @@
 
 | Service | Address |
 |---|---|
-| Web UI (Material Skin) | http://lyrion.barnabas.dk/material |
+| Web UI (Material Skin) | http://lyrion.example.com/material |
 | Squeezebox protocol | TCP/UDP 3483 |
 
 ## Storage
@@ -65,7 +65,7 @@ kubectl -n lyrion scale deployment/lyrion --replicas=1
 
 ## Networking
 
-- **VIP**: `192.168.1.61` via MetalLB — stable across pod rescheduling
+- **VIP**: `10.0.0.61` (example) via MetalLB — stable across pod rescheduling
 - **Web UI**: port 80 on VIP (MetalLB maps 80 → pod port 9000)
 - **hostNetwork**: enabled — required for:
   - Squeezebox UDP broadcast discovery on the LAN
@@ -90,7 +90,7 @@ Installed plugins (persisted in `/config/cache/InstalledPlugins/`):
 3. In LMS → Settings → Advanced → Spotty → enter Client ID and Secret
 4. Authenticate via the plugin settings page
 
-> **Important**: Open LMS via the node IP (`http://192.168.1.5x:9000`, e.g. 192.168.1.56) when authenticating — Spotty uses the host address to build the OAuth callback URL. With `hostNetwork: true` this will be the node IP (routable from browser).
+> **Important**: Open LMS via the node IP (`http://10.0.0.5x:9000`) when authenticating — Spotty uses the host address to build the OAuth callback URL. With `hostNetwork: true` this will be the node IP (routable from browser).
 
 ### Qobuz setup
 
