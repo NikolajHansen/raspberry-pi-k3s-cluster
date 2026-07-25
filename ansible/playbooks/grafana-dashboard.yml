@@ -1,5 +1,9 @@
 ---
 # Deploy Grafana ingress and cluster overview dashboard for wall display.
+# Uses a fixed version of community dashboard #315 with updated metric labels
+# to match current kube-prometheus-stack (node= instead of kubernetes_io_hostname=).
+#
+# Kiosk URL: http://grafana.<internal_domain>/d/cluster-overview/cluster-overview?kiosk&refresh=30s
 #
 # Usage: k3s-ansible grafana-dashboard.yml
 
