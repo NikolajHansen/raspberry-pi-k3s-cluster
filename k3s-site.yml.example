@@ -5,7 +5,7 @@
 # Networking
 master_ip: 10.0.0.50
 lan_subnet: 10.0.0.0/24
-dns_internal_ip: 10.0.0.21   # Authoritative DNS for internal domains (e.g. tinydns/djbdns)
+dns_internal_ip: 10.0.0.21   # Authoritative DNS for internal domains (Unbound)
 dns_external_ip: 10.0.0.1    # Upstream DNS for external queries (e.g. router/pfSense)
 
 # Domains
