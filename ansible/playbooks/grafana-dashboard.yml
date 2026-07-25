@@ -14,12 +14,24 @@
     kubeconfig: /etc/rancher/k3s/k3s.yaml
     grafana_hostname: "{{ 'grafana.' + internal_domain }}"
   tasks:
+    - name: Render and apply Grafana ingress
+      template:
+        src: "{{ playbook_dir }}/../templates/grafana-ingress.yml.j2"
+        dest: /tmp/grafana-ingress.yml
+        mode: '0600'
+      register: tpl
+
     - name: Apply Grafana ingress
-      command: kubectl apply -f {{ playbook_dir }}/../../manifests/grafana-ingress.yml
+      command: kubectl apply -f /tmp/grafana-ingress.yml
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
       register: result
       changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+    - name: Remove rendered ingress file
+      file:
+        path: /tmp/grafana-ingress.yml
+        state: absent
 
     - name: Deploy cluster overview dashboard ConfigMap
       shell: |

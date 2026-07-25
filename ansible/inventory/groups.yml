@@ -17,7 +17,7 @@ all:
     nas:
       hosts:
         atlas:
-          ansible_user: nikolaj
+          ansible_user: "{{ nas_user | default('admin') }}"
           ansible_pipelining: false
   vars:
     ansible_user: system

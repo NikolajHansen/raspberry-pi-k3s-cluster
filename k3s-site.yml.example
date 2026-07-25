@@ -12,6 +12,9 @@ dns_external_ip: 10.0.0.1    # Upstream DNS for external queries (e.g. router/pf
 internal_domain: example.com
 secondary_domain: example.org
 
+# NAS / atlas
+nas_user: admin                # SSH user for the NAS host (atlas)
+
 # NFS
 nfs_server: nfs.example.com
 nfs_music_path: /data/media

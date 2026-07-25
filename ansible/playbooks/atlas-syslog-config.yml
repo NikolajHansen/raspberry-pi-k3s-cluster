@@ -12,10 +12,10 @@
   become: true
   gather_facts: false
   vars:
-    ansible_become_password: "{{ lookup('community.general.bitwarden', 'nikolaj user on atlas') }}"
+    ansible_become_password: "{{ lookup('community.general.bitwarden', 'atlas', field='ansible_become_password') }}"
     log_root: /greenlake/k3s/logs
     jail_name: syslog
-    jail_root: /area51/jails/syslog.barnabas.dk
+    jail_root: "/area51/jails/{{ jail_name }}.{{ internal_domain }}"
     jail_fstab: /etc/fstab.syslog
     syslogng_conf_src: "{{ playbook_dir }}/../templates/syslog-ng.conf.j2"
     syslogng_conf_dst: "{{ jail_root }}/usr/local/etc/syslog-ng.conf"

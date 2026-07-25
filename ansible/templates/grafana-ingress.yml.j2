@@ -7,7 +7,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
 spec:
   rules:
-    - host: grafana.barnabas.dk
+    - host: grafana.{{ internal_domain }}
       http:
         paths:
           - path: /
