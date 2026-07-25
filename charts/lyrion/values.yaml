@@ -25,4 +25,7 @@ resources:
     cpu: "250m"
   limits:
     memory: "1500Mi"
+    # CPU limit is generous (2 cores) — actual idle usage ~25m.
+    # If cluster resources get tight, consider tightening to 500m.
+    # LMS spikes during library rescans and transcoding, so leave headroom.
     cpu: "2000m"
