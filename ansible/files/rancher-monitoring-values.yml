@@ -1,0 +1,16 @@
+prometheus:
+  prometheusSpec:
+    resources:
+      limits:
+        memory: 3000Mi
+      requests:
+        memory: 750Mi
+
+prometheus-adapter:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 700Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi

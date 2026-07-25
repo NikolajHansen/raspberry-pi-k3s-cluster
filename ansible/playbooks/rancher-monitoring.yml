@@ -36,9 +36,15 @@
         --namespace cattle-monitoring-system
         --create-namespace
         --set prometheus.prometheusSpec.retention={{ monitoring_retention_value }}
+        -f {{ playbook_dir }}/../files/rancher-monitoring-values.yml
         --wait
         --timeout 15m
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
       register: monitoring_result
       changed_when: "'has been upgraded' in monitoring_result.stdout or 'has been deployed' in monitoring_result.stdout"
+
+    - name: Remove temporary values file
+      file:
+        path: /tmp/rancher-monitoring-values.yml
+        state: absent
