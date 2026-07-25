@@ -1,0 +1,35 @@
+---
+# Deploy Grafana ingress and cluster overview dashboard for wall display.
+#
+# Usage: k3s-ansible grafana-dashboard.yml
+
+- name: Deploy Grafana wall display dashboard
+  hosts: masters
+  become: yes
+  vars:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    grafana_hostname: "{{ 'grafana.' + internal_domain }}"
+  tasks:
+    - name: Apply Grafana ingress
+      command: kubectl apply -f {{ playbook_dir }}/../../manifests/grafana-ingress.yml
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: result
+      changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+    - name: Deploy cluster overview dashboard ConfigMap
+      shell: |
+        kubectl create configmap cluster-overview-dashboard \
+          -n cattle-dashboards \
+          --from-file=cluster-overview.json={{ playbook_dir }}/../files/cluster-overview-dashboard.json \
+          --dry-run=client -o yaml | \
+        kubectl label --local -f - grafana_dashboard=1 -o yaml | \
+        kubectl apply -f -
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: cm_result
+      changed_when: "'configured' in cm_result.stdout or 'created' in cm_result.stdout"
+
+    - name: Print kiosk URL
+      debug:
+        msg: "Wall display URL: http://{{ grafana_hostname }}/d/cluster-overview/cluster-overview?kiosk&refresh=30s"
