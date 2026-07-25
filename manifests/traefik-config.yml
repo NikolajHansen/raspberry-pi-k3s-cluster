@@ -1,0 +1,39 @@
+# Override k3s's built-in Traefik deployment:
+#   - Scale to 3 replicas spread across worker nodes
+#   - Remove control-plane toleration so it cannot land on master01
+#   - Spread replicas across distinct nodes via pod anti-affinity
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    deployment:
+      replicas: 3
+      podAnnotations:
+        prometheus.io/port: "8082"
+        prometheus.io/scrape: "true"
+    # Remove the control-plane toleration so Traefik cannot be scheduled on master01.
+    # Keep CriticalAddonsOnly for DaemonSet-style priority on workers.
+    tolerations:
+      - key: "CriticalAddonsOnly"
+        operator: "Exists"
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - traefik
+              topologyKey: kubernetes.io/hostname

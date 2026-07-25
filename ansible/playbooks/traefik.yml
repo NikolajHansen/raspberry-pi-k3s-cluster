@@ -1,0 +1,36 @@
+---
+# Apply Traefik HelmChartConfig to move Traefik off the master node
+# and spread 3 replicas across worker nodes.
+#
+# Usage: k3s-ansible traefik.yml
+
+- name: Configure Traefik placement and scaling
+  hosts: masters
+  become: yes
+  vars:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    manifest: "{{ playbook_dir }}/../../manifests/traefik-config.yml"
+  tasks:
+    - name: Apply Traefik HelmChartConfig
+      command: kubectl apply -f {{ manifest }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: result
+      changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+    - name: Wait for Traefik rollout
+      command: kubectl rollout status deployment/traefik -n kube-system --timeout=120s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Show Traefik pod placement
+      command: kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik -o wide
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+      register: pods
+
+    - name: Print pod placement
+      debug:
+        msg: "{{ pods.stdout_lines }}"
