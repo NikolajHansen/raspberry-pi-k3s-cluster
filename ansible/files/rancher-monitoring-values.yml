@@ -15,6 +15,19 @@ prometheus-adapter:
       cpu: 100m
       memory: 256Mi
 
+prometheus-node-exporter:
+  prometheus:
+    monitor:
+      relabelings:
+        # Replace IP:port instance label with node FQDN for all dashboards
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: instance
+          regex: (.+)
+        # Also add a node label so node=~"$Node" filters work on node_* metrics
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+          regex: (.+)
+
 grafana:
   grafana.ini:
     auth.anonymous:
