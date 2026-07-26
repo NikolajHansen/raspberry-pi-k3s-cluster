@@ -18,6 +18,12 @@
         KUBECONFIG: "{{ kubeconfig }}"
       changed_when: false
 
+    - name: Copy monitoring values file to master
+      copy:
+        src: "{{ playbook_dir }}/../files/rancher-monitoring-values.yml"
+        dest: /tmp/rancher-monitoring-values.yml
+        mode: '0600'
+
     - name: Install rancher-monitoring CRDs
       command: >
         helm upgrade --install rancher-monitoring-crd rancher-charts/rancher-monitoring-crd
@@ -36,7 +42,7 @@
         --namespace cattle-monitoring-system
         --create-namespace
         --set prometheus.prometheusSpec.retention={{ monitoring_retention_value }}
-        -f {{ playbook_dir }}/../files/rancher-monitoring-values.yml
+        -f /tmp/rancher-monitoring-values.yml
         --wait
         --timeout 15m
       environment:
