@@ -33,11 +33,17 @@
         path: /tmp/grafana-ingress.yml
         state: absent
 
+    - name: Copy dashboard JSON to master
+      copy:
+        src: "{{ playbook_dir }}/../files/cluster-overview-dashboard.json"
+        dest: /tmp/cluster-overview-dashboard.json
+        mode: '0600'
+
     - name: Deploy cluster overview dashboard ConfigMap
       shell: |
         kubectl create configmap cluster-overview-dashboard \
           -n cattle-dashboards \
-          --from-file=cluster-overview.json={{ playbook_dir }}/../files/cluster-overview-dashboard.json \
+          --from-file=cluster-overview.json=/tmp/cluster-overview-dashboard.json \
           --dry-run=client -o yaml | \
         kubectl label --local -f - grafana_dashboard=1 -o yaml | \
         kubectl apply -f -
@@ -45,6 +51,11 @@
         KUBECONFIG: "{{ kubeconfig }}"
       register: cm_result
       changed_when: "'configured' in cm_result.stdout or 'created' in cm_result.stdout"
+
+    - name: Remove temporary dashboard JSON
+      file:
+        path: /tmp/cluster-overview-dashboard.json
+        state: absent
 
     - name: Print kiosk URL
       debug:
