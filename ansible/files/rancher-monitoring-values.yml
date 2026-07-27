@@ -9,11 +9,22 @@ prometheus:
 prometheus-adapter:
   resources:
     limits:
-      cpu: 500m
+      cpu: 750m
       memory: 700Mi
     requests:
       cpu: 100m
       memory: 256Mi
+  # Reduce Prometheus query frequency — serves from cache between relistings.
+  # Default is 1m which hammers Prometheus on every kube-apiserver discovery poll.
+  metricsRelistInterval: 10m
+  # Narrow rules to empty set — no HPAs in use so no need to expose custom metrics.
+  # This makes discovery responses trivially fast (empty list) rather than
+  # querying thousands of container_* series on every poll.
+  rules:
+    default: false
+    custom: []
+    external: []
+    resource: {}
 
 prometheus-node-exporter:
   prometheus:
