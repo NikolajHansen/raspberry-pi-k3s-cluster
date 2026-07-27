@@ -78,3 +78,12 @@ Set `syslog_server: 10.0.0.26` (example) in `~/k3s-site.yml` (the syslog jail IP
 ## Other
 
 - [ ] Rename Botkube Slack app from "Demo App" to "Botkube" (delete and recreate in Slack app portal — username cannot be changed after creation)
+
+## Rancher memory growth
+
+Rancher pods grow over time — 47-day-old pods reached 1.65–2.27GB vs fresh pods at ~700Mi.
+This may be normal cache population (cluster state, Fleet, CAPI) rather than a leak.
+Observed 2026-07-27: manually restarted pods, total dropped from 4.9GB → 2.6GB.
+
+Monitor whether memory stabilises at a steady state or keeps growing unbounded.
+If unbounded: consider setting a limit (e.g. 2500Mi) or a periodic rolling restart.
