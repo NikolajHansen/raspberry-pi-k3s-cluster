@@ -15,7 +15,7 @@ Pi nodes (all 10)
                                               └── syslog-ng
                                                     ├── /mnt/logs/nodes/<host>/YYYY-MM-DD.log
                                                     └── /mnt/logs/pods/<host>/YYYY-MM-DD.log
-                                        (ZFS: greenlake/logs/k3s-cluster, rotated 30 days)
+                                        (ZFS: greenlake/k3s/logs, rotated 30 days)
 ```
 
 All cluster nodes are **stateless by design** — journald runs in volatile
@@ -135,5 +135,5 @@ the Ansible playbook.
 
 Logs are rotated daily, 30 days retained, via `newsyslog.conf.d/` on atlas.
 
-The ZFS path is `/greenlake/logs/k3s-cluster/` (bind-mounted into the jail
+The ZFS path is `/greenlake/k3s/logs/` (bind-mounted into the jail
 at `/mnt/logs/`).

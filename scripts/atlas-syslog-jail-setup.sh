@@ -6,7 +6,7 @@
 #   1. Creates ZFS dataset greenlake/k3s/logs
 #   2. Creates jail directory/symlink structure at /area51/jails/syslog.example.com
 #   3. Populates /etc from basejail and rebuilds passwd db
-#   4. Creates /etc/jail.conf.d/syslog.conf  (IP 10.0.0.25)
+#   4. Creates /etc/jail.conf.d/syslog.conf  (IP 10.0.0.26)
 #   5. Adds 'syslog' to jail_list in /etc/rc.conf (jail framework owns the IP)
 #   6. Clears any stuck IP aliases from prior failed attempts
 #   7. Starts the jail via `service jail start`
@@ -15,7 +15,7 @@
 # After this script succeeds, run the Ansible playbook on the k3s cluster:
 #   k3s-ansible remote-logging.yml
 #
-# Cluster nodes forward logs to 10.0.0.25:514 (TCP).
+# Cluster nodes forward logs to 10.0.0.26:514 (TCP).
 # Node logs : /greenlake/k3s/logs/nodes/<hostname>/YYYY-MM-DD.log
 # Pod logs  : /greenlake/k3s/logs/pods/<namespace>/<podname>/YYYY-MM-DD.log
 

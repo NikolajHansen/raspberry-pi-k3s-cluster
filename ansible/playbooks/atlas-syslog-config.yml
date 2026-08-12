@@ -16,7 +16,7 @@
     log_root: /greenlake/k3s/logs
     jail_name: syslog
     jail_root: "/area51/jails/{{ jail_name }}.{{ internal_domain }}"
-    jail_fstab: /etc/fstab.syslog
+    jail_fstab: "{{ jail_root }}/etc/fstab"
     syslogng_conf_src: "{{ playbook_dir }}/../templates/syslog-ng.conf.j2"
     syslogng_conf_dst: "{{ jail_root }}/usr/local/etc/syslog-ng.conf"
 
@@ -39,7 +39,7 @@
       ansible.builtin.lineinfile:
         path: "{{ jail_fstab }}"
         regexp: '^\S+\s+{{ jail_root }}/mnt/logs'
-        line: "{{ log_root }}\t{{ jail_root }}/mnt/logs\tnullfs\tro\t0\t0"
+        line: "{{ log_root }}\t{{ jail_root }}/mnt/logs\tnullfs\trw\t0\t0"
         create: true
         mode: "0644"
       notify: Remount jail logs
