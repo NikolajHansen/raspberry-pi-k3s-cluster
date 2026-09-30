@@ -132,6 +132,26 @@ k3s-ansible botkube.yml
 
 Requires `botkube_slack_bot_token` and `botkube_slack_app_token` in `~/k3s-site.yml`. Tokens are written to a temporary file (`0600`) during deploy and cleaned up immediately — they are never passed via `--set` or stored in Helm history.
 
+### Provision the e-Boks PostgreSQL jail
+
+```bash
+k3s-ansible atlas-postgresql.yml
+```
+
+The playbook at `ansible/playbooks/atlas-postgresql.yml` is prepared but has not been executed. It provisions PostgreSQL 17 in the existing `db.barnabas.dk` jail, mounts `greenlake/database/postgresql` at `/var/db/postgres`, removes the user-approved legacy MariaDB installation and data, enables TLS/SCRAM, creates the `eboks_callback_artemis` database and `eboks_callback` role, and writes runtime credentials to Kubernetes Secret `database-eboks-callback/eboks-database-credentials`.
+
+Execution is currently blocked by a Bitwarden CLI Snap/AppArmor network-policy problem. The Snap interfaces are connected, but the generated `snap.bw.bw` profile denies the CLI's outbound TLS traffic. Do not edit generated profiles, add profile-patching services, weaken shared AppArmor policy, or install a parallel npm CLI. Resolve the defect through the supported Bitwarden Snap, snapd, Ubuntu, or AppArmor package path before running this playbook.
+
+After the supported fix is installed:
+
+1. Run `bw logout` to invalidate the CLI session exposed during troubleshooting, then authenticate again.
+2. Review the playbook's MariaDB deletion, `lagg0|192.168.1.27/32` jail binding, ZFS paths, and Kubernetes Secret destination.
+3. Run `k3s-ansible atlas-postgresql.yml`.
+4. Verify the ZFS dataset, jail startup, PostgreSQL TLS listener, role connection limit, database ownership, and Secret keys.
+5. Apply the e-Boks repository's Liquibase migrations and verify the Artemis/application tables.
+
+The full application and infrastructure handoff is recorded in `/home/nikolaj/workspace/eboks-callback/docs/IMPLEMENTATION_STATUS.md`.
+
 ## Accessing Rancher
 
 Once the cluster is up, Rancher is available at the hostname set in `rancher_hostname` in `~/k3s-site.yml`.

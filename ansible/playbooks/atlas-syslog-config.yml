@@ -9,10 +9,9 @@
 
 - name: Configure syslog-ng on atlas syslog jail
   hosts: atlas
-  become: true
+  become: true  # Pass --ask-become-pass or set ansible_become_password in ~/k3s-site.yml
   gather_facts: false
   vars:
-    ansible_become_password: "{{ lookup('community.general.bitwarden', 'atlas', field='ansible_become_password') }}"
     log_root: /greenlake/k3s/logs
     jail_name: syslog
     jail_root: "/area51/jails/{{ jail_name }}.{{ internal_domain }}"

@@ -12,10 +12,9 @@
 
 - name: Migrate syslog ZFS dataset to greenlake/k3s/logs
   hosts: atlas
-  become: true
+  become: true  # Pass --ask-become-pass or set ansible_become_password in ~/k3s-site.yml
   gather_facts: false
   vars:
-    ansible_become_password: "{{ lookup('community.general.bitwarden', 'atlas', field='ansible_become_password') }}"
     old_dataset: greenlake/logs/k3s-cluster
     new_dataset: greenlake/k3s/logs
     new_mount: /greenlake/k3s/logs

@@ -1,0 +1,272 @@
+---
+- name: Provision PostgreSQL in the Atlas database jail for e-Boks callback
+  hosts: atlas
+  become: true
+  gather_facts: false
+  vars:
+    jail_name: db
+    jail_hostname: "db.{{ internal_domain }}"
+    jail_ip: 192.168.1.27
+    jail_root: "/area51/jails/{{ jail_hostname }}"
+    jail_fstab: "{{ jail_root }}/etc/fstab"
+    postgresql_version: "17"
+    postgresql_package: "postgresql{{ postgresql_version }}-server"
+    postgresql_client_package: "postgresql{{ postgresql_version }}-client"
+    postgresql_dataset: greenlake/database/postgresql
+    postgresql_host_path: /greenlake/database/postgresql
+    postgresql_jail_path: /var/db/postgres
+    postgresql_data_path: "/var/db/postgres/data{{ postgresql_version }}"
+    postgresql_host_data_path: "{{ postgresql_host_path }}/data{{ postgresql_version }}"
+    application_database: eboks_callback_artemis
+    application_username: eboks_callback
+    kubernetes_namespace: database-eboks-callback
+    kubernetes_secret: eboks-database-credentials
+
+  pre_tasks:
+    - name: Ensure Kubernetes namespace exists
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ kubernetes_namespace }}"
+      become: false
+      delegate_to: localhost
+
+    - name: Read existing application database Secret
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        namespace: "{{ kubernetes_namespace }}"
+        name: "{{ kubernetes_secret }}"
+      register: existing_database_secret
+      become: false
+      delegate_to: localhost
+      no_log: true
+
+    - name: Select persistent application database password
+      ansible.builtin.set_fact:
+        application_password: >-
+          {{
+            (existing_database_secret.resources[0].data.password | b64decode)
+            if existing_database_secret.resources | length > 0
+            else lookup('community.general.random_string', length=48, special=false)
+          }}
+      no_log: true
+
+  tasks:
+    - name: Stop database jail before changing mounts
+      ansible.builtin.command:
+        cmd: service jail onestop {{ jail_name }}
+      register: jail_stop
+      failed_when: false
+      changed_when: jail_stop.rc == 0
+
+    - name: Create PostgreSQL ZFS dataset
+      community.general.zfs:
+        name: "{{ postgresql_dataset }}"
+        state: present
+        extra_zfs_properties:
+          mountpoint: "{{ postgresql_host_path }}"
+          compression: lz4
+          atime: "off"
+          recordsize: 16K
+
+    - name: Ensure PostgreSQL jail mountpoint exists
+      ansible.builtin.file:
+        path: "{{ jail_root }}{{ postgresql_jail_path }}"
+        state: directory
+        owner: root
+        group: wheel
+        mode: "0755"
+
+    - name: Mount PostgreSQL dataset in database jail
+      ansible.builtin.lineinfile:
+        path: "{{ jail_fstab }}"
+        regexp: '^\S+\s+{{ jail_root }}{{ postgresql_jail_path }}\s+'
+        line: "{{ postgresql_host_path }}\t{{ jail_root }}{{ postgresql_jail_path }}\tnullfs\trw\t0\t0"
+        create: true
+        owner: root
+        group: wheel
+        mode: "0644"
+
+    - name: Bind database jail to the active Atlas interface
+      ansible.builtin.replace:
+        path: /etc/jail.conf.d/db.conf
+        regexp: 'ip4\.addr\s*=\s*"[^"]+";'
+        replace: 'ip4.addr = "lagg0|{{ jail_ip }}/32";'
+
+    - name: Start database jail
+      ansible.builtin.command:
+        cmd: service jail onestart {{ jail_name }}
+
+    - name: Remove legacy MariaDB and MySQL packages
+      ansible.builtin.shell:
+        cmd: |
+          packages=$(jexec {{ jail_name }} pkg info -q | grep -E '^(mariadb|mysql)' || true)
+          if [ -n "$packages" ]; then
+            jexec {{ jail_name }} pkg delete -y $packages
+          fi
+      register: mysql_packages_removed
+      changed_when: "'Deinstallation has been requested' in mysql_packages_removed.stdout"
+
+    - name: Remove legacy MariaDB data and configuration
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ jail_root }}/var/db/mysql"
+        - "{{ jail_root }}/usr/local/etc/mysql"
+        - "{{ jail_root }}/usr/local/etc/my.cnf"
+
+    - name: Disable legacy MySQL service
+      ansible.builtin.lineinfile:
+        path: "{{ jail_root }}/etc/rc.conf"
+        regexp: '^mysql_enable='
+        state: absent
+
+    - name: Install PostgreSQL server and client
+      ansible.builtin.command:
+        cmd: >-
+          jexec {{ jail_name }} pkg install -y
+          {{ postgresql_package }} {{ postgresql_client_package }}
+      register: postgresql_install
+      changed_when: "'The following' in postgresql_install.stdout or 'Installing' in postgresql_install.stdout"
+
+    - name: Configure PostgreSQL service
+      ansible.builtin.blockinfile:
+        path: "{{ jail_root }}/etc/rc.conf"
+        marker: "# {mark} E-BOKS POSTGRESQL"
+        block: |
+          postgresql_enable="YES"
+          postgresql_data="{{ postgresql_data_path }}"
+
+    - name: Set PostgreSQL dataset ownership
+      ansible.builtin.command:
+        cmd: jexec {{ jail_name }} chown -R postgres:postgres {{ postgresql_jail_path }}
+
+    - name: Check whether PostgreSQL is initialized
+      ansible.builtin.stat:
+        path: "{{ postgresql_host_data_path }}/PG_VERSION"
+      register: postgresql_initialized
+
+    - name: Initialize PostgreSQL
+      ansible.builtin.command:
+        cmd: jexec {{ jail_name }} service postgresql oneinitdb
+      when: not postgresql_initialized.stat.exists
+
+    - name: Configure PostgreSQL listener
+      ansible.builtin.lineinfile:
+        path: "{{ postgresql_host_data_path }}/postgresql.conf"
+        regexp: "^#?listen_addresses\\s*="
+        line: "listen_addresses = '{{ jail_ip }}'"
+
+    - name: Require SCRAM password encryption
+      ansible.builtin.lineinfile:
+        path: "{{ postgresql_host_data_path }}/postgresql.conf"
+        regexp: "^#?password_encryption\\s*="
+        line: "password_encryption = 'scram-sha-256'"
+
+    - name: Enable PostgreSQL TLS
+      ansible.builtin.lineinfile:
+        path: "{{ postgresql_host_data_path }}/postgresql.conf"
+        regexp: "^#?ssl\\s*="
+        line: "ssl = on"
+
+    - name: Create PostgreSQL TLS private key
+      ansible.builtin.command:
+        cmd: >-
+          jexec {{ jail_name }} openssl req -new -x509 -nodes -days 825
+          -subj /CN={{ jail_hostname }}
+          -keyout {{ postgresql_data_path }}/server.key
+          -out {{ postgresql_data_path }}/server.crt
+      args:
+        creates: "{{ postgresql_host_data_path }}/server.key"
+
+    - name: Secure PostgreSQL TLS files
+      ansible.builtin.command:
+        cmd: >-
+          jexec {{ jail_name }} sh -c
+          'chown postgres:postgres {{ postgresql_data_path }}/server.key {{ postgresql_data_path }}/server.crt &&
+          chmod 0600 {{ postgresql_data_path }}/server.key &&
+          chmod 0644 {{ postgresql_data_path }}/server.crt'
+
+    - name: Configure TLS-only LAN authentication
+      ansible.builtin.blockinfile:
+        path: "{{ postgresql_host_data_path }}/pg_hba.conf"
+        marker: "# {mark} E-BOKS KUBERNETES ACCESS"
+        insertbefore: BOF
+        block: |
+          hostssl all all 192.168.1.0/24 scram-sha-256
+          hostnossl all all 192.168.1.0/24 reject
+
+    - name: Restart PostgreSQL
+      ansible.builtin.command:
+        cmd: jexec {{ jail_name }} service postgresql restart
+
+    - name: Write temporary database provisioning SQL
+      ansible.builtin.copy:
+        dest: "{{ jail_root }}/tmp/provision-eboks-callback.sql"
+        owner: root
+        group: wheel
+        mode: "0600"
+        content: |
+          \set ON_ERROR_STOP on
+          SELECT format('CREATE ROLE %I LOGIN', '{{ application_username }}')
+          WHERE NOT EXISTS (
+              SELECT FROM pg_catalog.pg_roles WHERE rolname = '{{ application_username }}'
+          )\gexec
+          ALTER ROLE {{ application_username }}
+              WITH LOGIN PASSWORD '{{ application_password }}'
+              CONNECTION LIMIT 20;
+          SELECT format(
+              'CREATE DATABASE %I OWNER %I',
+              '{{ application_database }}',
+              '{{ application_username }}'
+          )
+          WHERE NOT EXISTS (
+              SELECT FROM pg_database WHERE datname = '{{ application_database }}'
+          )\gexec
+          ALTER DATABASE {{ application_database }} OWNER TO {{ application_username }};
+      no_log: true
+
+    - name: Provision application role and database
+      ansible.builtin.command:
+        cmd: >-
+          jexec -U postgres {{ jail_name }}
+          psql --dbname postgres --file /tmp/provision-eboks-callback.sql
+      no_log: true
+
+    - name: Remove temporary database provisioning SQL
+      ansible.builtin.file:
+        path: "{{ jail_root }}/tmp/provision-eboks-callback.sql"
+        state: absent
+
+    - name: Ensure database jail starts at boot
+      ansible.builtin.lineinfile:
+        path: /etc/rc.conf
+        regexp: '^jail_list='
+        line: 'jail_list="net squeezebox web media syslog db"'
+
+    - name: Store runtime database credentials in Kubernetes
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ kubernetes_secret }}"
+            namespace: "{{ kubernetes_namespace }}"
+          type: Opaque
+          stringData:
+            host: "{{ jail_hostname }}"
+            port: "5432"
+            database: "{{ application_database }}"
+            username: "{{ application_username }}"
+            password: "{{ application_password }}"
+            jdbc-url: >-
+              jdbc:postgresql://{{ jail_hostname }}:5432/{{ application_database }}?sslmode=require
+      become: false
+      delegate_to: localhost
+      no_log: true
