@@ -3,4 +3,4 @@ name: lyrion
 description: Lyrion Music Server (Squeezebox compatible) on NFSv4 storage
 type: application
 version: 1.0.0
-appVersion: "9.1.1"
+appVersion: "9.1.2"

@@ -13,8 +13,8 @@ hostname: lyrion.example.com
 
 # Container image
 image:
-  repository: lmscommunity/lyrionmusicserver
-  tag: "9.1.1"
+  repository: ghcr.io/nikolajhansen/lyrion
+  tag: "9.1.2-tools"
 
 # Timezone inside the container
 timezone: Europe/Copenhagen
