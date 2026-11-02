@@ -71,6 +71,11 @@ External dependencies wired into this flow:
    - `rancher-monitoring.yml` installs Rancher Monitoring (CRDs + stack) in `cattle-monitoring-system`.
    - `rpi-sensors.yml` deploys a DaemonSet and PodMonitor exposing Raspberry Pi temperature and firmware throttling metrics to Prometheus.
 
+4. **Ingress, logging and NAS (`traefik.yml`, `remote-logging.yml`, `atlas-*.yml`, `scripts/`)**
+   - `traefik.yml` applies `manifests/traefik-config.yml`.
+   - `remote-logging.yml` / `atlas-syslog-config.yml` ship logs to the NAS syslog jail (see `docs/logging.md`).
+   - `atlas-*.yml` and `scripts/atlas-*.sh` configure FreeBSD NAS jails and ZFS/NFS storage (see `docs/storage.md`).
+
 ## Weekend baseline (2026-06-13 to 2026-06-14)
 
 Treat these as the current intended state unless the user explicitly asks to change them:
@@ -90,3 +95,8 @@ Treat these as the current intended state unless the user explicitly asks to cha
 - **UID mapping is intentional**: playbooks create `squeezeboxserver` UID 499 on every node so NFSv4 numeric UID mapping matches container ownership.
 - **Secrets handling pattern**: keep secrets out of Helm `--set` when possible; Botkube uses a temporary `0600` values file and deletes it after install.
 - **Documentation sanitization**: keep public docs/examples anonymized (`example.com`, `10.0.0.x`) rather than real domain/IP values.
+- **Custom Lyrion image**: `docker/lyrion/Dockerfile` adds `ffmpeg flac sox faad mpg123` to the upstream image. `.github/workflows/lyrion-image.yml` builds it on an arm64 runner and pushes `ghcr.io/nikolajhansen/lyrion:<LMS_VERSION>-tools` (public package). Bump the tag in `charts/lyrion/values.yaml` when changing the LMS version; there is no local buildx.
+- **Helm ownership**: the Lyrion Namespace, PVs/PVCs, Deployment, Service and Ingress are Helm-managed (release `lyrion`). Never `helm uninstall` (it deletes the Namespace); deploy with `k3s-ansible lyrion.yml`.
+- **Lyrion data safety**: `/config` (NFS) holds the only copy of library, playlist and plugin state. Never clear/rescan the library, and never install packages ad hoc in the running pod; change the image instead.
+- **MetalLB IP**: the Lyrion Service sets the VIP via the `metallb.universe.tf/loadBalancerIPs` annotation; also setting `spec.loadBalancerIP` makes MetalLB reject the Service ("can not have both"). Use only one.
+- **Pod mobility**: the Lyrion pod uses `hostNetwork`, so it can move between nodes; players should use `lyrion.<domain>` / the MetalLB VIP, not a node IP.

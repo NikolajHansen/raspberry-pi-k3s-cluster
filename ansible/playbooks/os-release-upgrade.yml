@@ -1,0 +1,183 @@
+# Rolling in-place release upgrade: Debian 12 (bookworm) -> 13 (trixie).
+#
+# NOT officially supported by Raspberry Pi (a fresh image is the supported path), so this
+# is deliberately guarded:
+#   - refuses to run without -e release_upgrade=true
+#   - refuses to run on a node that is not bookworm, or not fully patched first
+#   - backs up apt sources, boot config and key /etc dirs to /var/backups/release-upgrade
+#   - keeps existing config files (--force-confold) so ssh, NetworkManager and rsyslog
+#     settings are not overwritten
+#   - one node at a time, stops on the first failure, node stays cordoned
+#
+# Prerequisite: run os-upgrade.yml on the node first (fully patched bookworm).
+#
+# Canary (one worker): k3s-ansible os-release-upgrade.yml --limit node01 -e release_upgrade=true
+# Remaining workers:   k3s-ansible os-release-upgrade.yml --limit 'workers:!node01' -e release_upgrade=true
+# Control plane:       k3s-ansible os-release-upgrade.yml --limit master01 -e release_upgrade=true -e upgrade_master=true
+#
+# Take a k3s snapshot and run scripts/lyrion-backup.sh before the control plane.
+# Recovery for a node that does not boot: reflash the image and rejoin with k3s-cluster.yml.
+
+- name: Release upgrade bookworm -> trixie, one node at a time
+  hosts: workers:masters
+  serial: 1
+  any_errors_fatal: true
+  become: yes
+  vars:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    master: "{{ groups['masters'][0] }}"
+    from_release: bookworm
+    to_release: trixie
+    min_free_mb: 3000
+    backup_dir: /var/backups/release-upgrade
+    is_master: "{{ inventory_hostname in groups['masters'] }}"
+  tasks:
+    - name: Require explicit opt-in
+      assert:
+        that: release_upgrade | default(false) | bool
+        fail_msg: "Set -e release_upgrade=true (and use --limit) to run a release upgrade."
+
+    - name: Require explicit opt-in for the control plane
+      assert:
+        that: upgrade_master | default(false) | bool
+        fail_msg: "Set -e upgrade_master=true to upgrade the control plane."
+      when: is_master | bool
+
+    - name: Read current release
+      command: sed -n 's/^VERSION_CODENAME=//p' /etc/os-release
+      register: codename
+      changed_when: false
+      check_mode: no
+
+    - name: Skip nodes that are already on the target release
+      meta: end_host
+      when: codename.stdout == to_release
+
+    - name: Require the source release
+      assert:
+        that: codename.stdout == from_release
+        fail_msg: "Expected {{ from_release }}, found {{ codename.stdout }}."
+
+    - name: Check free space on / and /var
+      command: df --output=avail -m /var
+      register: df_var
+      changed_when: false
+      check_mode: no
+      failed_when: (df_var.stdout_lines[-1] | trim | int) < min_free_mb
+
+    - name: Require a fully patched source release
+      apt:
+        update_cache: yes
+        upgrade: dist
+      check_mode: yes
+      register: pending
+      failed_when: pending.changed
+
+    - name: Require every node to be Ready
+      shell: >
+        kubectl --kubeconfig {{ kubeconfig }} get nodes --no-headers | awk '$2 != "Ready"' | wc -l
+      delegate_to: "{{ master }}"
+      register: not_ready
+      changed_when: false
+      check_mode: no
+      failed_when: not_ready.stdout | int > 0
+
+    - name: Back up apt sources, boot config and key config
+      shell: |
+        set -e
+        d={{ backup_dir }}/$(date +%Y%m%d-%H%M%S)
+        mkdir -p "$d"
+        cp -a /etc/apt "$d/apt"
+        cp -a /boot/firmware/cmdline.txt /boot/firmware/config.txt "$d/"
+        cp -a /etc/ssh /etc/NetworkManager /etc/fstab "$d/" 2>/dev/null || true
+        [ -d /etc/rsyslog.d ] && cp -a /etc/rsyslog.d "$d/rsyslog.d" || true
+        dpkg --get-selections > "$d/dpkg-selections.txt"
+        echo "$d"
+      register: backup
+      when: not ansible_check_mode
+
+    - name: Find the node name
+      shell: >
+        kubectl --kubeconfig {{ kubeconfig }} get nodes -o name | grep -E "/{{ inventory_hostname }}(\.|$)" | sed 's#^node/##'
+      delegate_to: "{{ master }}"
+      register: k8s_node_out
+      changed_when: false
+      check_mode: no
+
+    - name: Drain (workers only)
+      command: >
+        kubectl --kubeconfig {{ kubeconfig }} drain {{ k8s_node_out.stdout }}
+        --ignore-daemonsets --delete-emptydir-data --timeout=300s
+      delegate_to: "{{ master }}"
+      when: not (is_master | bool) and not ansible_check_mode
+
+    - name: Find apt source files
+      find:
+        paths: [/etc/apt/sources.list.d]
+        patterns: ["*.list", "*.sources"]
+      register: source_files
+
+    - name: Point apt sources at {{ to_release }}
+      replace:
+        path: "{{ item }}"
+        regexp: '^([^#\n]*){{ from_release }}'
+        replace: '\1{{ to_release }}'
+      loop: "{{ ['/etc/apt/sources.list'] + (source_files.files | map(attribute='path') | list) }}"
+      when: not ansible_check_mode
+
+    - name: Refresh package lists
+      apt:
+        update_cache: yes
+      when: not ansible_check_mode
+
+    - name: Minimal upgrade first (installed packages only, no new ones)
+      command: apt-get upgrade -y --without-new-pkgs -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      when: not ansible_check_mode
+
+    - name: Full upgrade
+      command: apt-get full-upgrade -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      when: not ansible_check_mode
+
+    - name: Remove obsolete packages
+      apt:
+        autoremove: yes
+        purge: yes
+      when: not ansible_check_mode
+
+    - name: Check boot config survived before rebooting
+      command: grep -q "cgroup_enable=memory" /boot/firmware/cmdline.txt
+      changed_when: false
+      check_mode: no
+
+    - name: Reboot
+      reboot:
+        reboot_timeout: 900
+      when: not ansible_check_mode
+
+    - name: Verify release and cgroups after reboot
+      shell: |
+        grep -q '^VERSION_CODENAME={{ to_release }}' /etc/os-release
+        grep -q cgroup_enable=memory /boot/firmware/cmdline.txt
+        uname -r
+      register: verify
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Wait for the node to be Ready
+      command: kubectl --kubeconfig {{ kubeconfig }} get node {{ k8s_node_out.stdout }} --no-headers
+      delegate_to: "{{ master }}"
+      register: node_state
+      until: "' Ready' in node_state.stdout and 'NotReady' not in node_state.stdout"
+      retries: 40
+      delay: 10
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Uncordon (workers only)
+      command: kubectl --kubeconfig {{ kubeconfig }} uncordon {{ k8s_node_out.stdout }}
+      delegate_to: "{{ master }}"
+      when: not (is_master | bool) and not ansible_check_mode
