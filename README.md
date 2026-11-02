@@ -83,6 +83,8 @@ k3s-ansible os-upgrade.yml --limit master01 -e upgrade_master=true
 
 `os-upgrade.yml` upgrades one node at a time (cordon, drain, `apt dist-upgrade`, reboot, wait for Ready, uncordon) and stays on the current Debian release. Back up first (`k3s etcd-snapshot save` on the master and `scripts/lyrion-backup.sh`). Lyrion uses `hostNetwork`, so point players at `lyrion.<domain>`, which follows the MetalLB VIP, not at a node IP.
 
+`os-release-upgrade.yml` does the bookworm to trixie release upgrade. It is not officially supported by Raspberry Pi, so it requires `-e release_upgrade=true`, a fully patched node and a `--limit`. Try it on one worker first (`--limit node01`); the control plane additionally needs `-e upgrade_master=true`.
+
 ## Roadmap
 
 - [ ] Dedicated cluster VLAN with pfSense routing
