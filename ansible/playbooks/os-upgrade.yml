@@ -1,0 +1,117 @@
+# Rolling OS patch upgrade (stays on the current Debian release, no release upgrade).
+#
+# One node at a time: cordon, drain, apt dist-upgrade, reboot, wait for Ready, uncordon.
+# Workers run first; the control plane runs only with -e upgrade_master=true.
+#
+# Canary first:   k3s-ansible os-upgrade.yml --limit node01
+# All workers:    k3s-ansible os-upgrade.yml
+# Control plane:  k3s-ansible os-upgrade.yml --limit master01 -e upgrade_master=true
+# Dry run:        add --check (apt/reboot/drain are skipped or simulated)
+#
+# Take a k3s snapshot and run scripts/lyrion-backup.sh before upgrading master01.
+
+- name: Upgrade worker nodes one at a time
+  hosts: workers
+  serial: 1
+  any_errors_fatal: true
+  become: yes
+  vars:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    master: "{{ groups['masters'][0] }}"
+  tasks:
+    - name: Resolve Kubernetes node name
+      command: kubectl --kubeconfig {{ kubeconfig }} get nodes -o name
+      delegate_to: "{{ master }}"
+      register: node_list
+      changed_when: false
+      check_mode: no
+
+    - name: Set node name
+      set_fact:
+        k8s_node: "{{ (node_list.stdout_lines | select('search', '/' ~ inventory_hostname ~ '(\\.|$)') | first) | regex_replace('^node/', '') }}"
+
+    - name: Require every node to be Ready before touching this one
+      shell: >
+        kubectl --kubeconfig {{ kubeconfig }} get nodes --no-headers | awk '$2 != "Ready"' | wc -l
+      delegate_to: "{{ master }}"
+      register: not_ready
+      changed_when: false
+      check_mode: no
+      failed_when: not_ready.stdout | int > 0
+
+    - name: Cordon and drain
+      command: >
+        kubectl --kubeconfig {{ kubeconfig }} drain {{ k8s_node }}
+        --ignore-daemonsets --delete-emptydir-data --timeout=300s
+      delegate_to: "{{ master }}"
+      when: not ansible_check_mode
+
+    - name: Upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+        autoremove: yes
+      register: apt_result
+
+    - name: Reboot
+      reboot:
+        reboot_timeout: 600
+      when: apt_result.changed and not ansible_check_mode
+
+    - name: Wait for node to be Ready
+      command: kubectl --kubeconfig {{ kubeconfig }} get node {{ k8s_node }} --no-headers
+      delegate_to: "{{ master }}"
+      register: node_state
+      until: "' Ready' in node_state.stdout and 'NotReady' not in node_state.stdout"
+      retries: 30
+      delay: 10
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Check cgroup memory is still enabled
+      command: grep -q "cgroup_enable=memory" /boot/firmware/cmdline.txt
+      changed_when: false
+      check_mode: no
+
+    - name: Uncordon
+      command: kubectl --kubeconfig {{ kubeconfig }} uncordon {{ k8s_node }}
+      delegate_to: "{{ master }}"
+      when: not ansible_check_mode
+
+- name: Upgrade control plane
+  hosts: masters
+  serial: 1
+  any_errors_fatal: true
+  become: yes
+  vars:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  tasks:
+    - name: Skip unless explicitly requested
+      meta: end_host
+      when: not (upgrade_master | default(false) | bool)
+
+    - name: Upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+        autoremove: yes
+      register: apt_result
+
+    - name: Reboot
+      reboot:
+        reboot_timeout: 600
+      when: apt_result.changed and not ansible_check_mode
+
+    - name: Wait for API to be ready
+      command: kubectl --kubeconfig {{ kubeconfig }} get --raw /readyz
+      register: readyz
+      until: readyz.stdout == 'ok'
+      retries: 30
+      delay: 10
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Check cgroup memory is still enabled
+      command: grep -q "cgroup_enable=memory" /boot/firmware/cmdline.txt
+      changed_when: false
+      check_mode: no

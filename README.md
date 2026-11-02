@@ -74,7 +74,14 @@ k3s-ansible rpi-sensors.yml
 
 # 6. (Optional) Deploy Botkube Slack monitoring
 k3s-ansible botkube.yml
+
+# 7. (Optional) Rolling OS patch upgrade: canary first, then all workers, then the control plane
+k3s-ansible os-upgrade.yml --limit node01
+k3s-ansible os-upgrade.yml
+k3s-ansible os-upgrade.yml --limit master01 -e upgrade_master=true
 ```
+
+`os-upgrade.yml` upgrades one node at a time (cordon, drain, `apt dist-upgrade`, reboot, wait for Ready, uncordon) and stays on the current Debian release. Back up first (`k3s etcd-snapshot save` on the master and `scripts/lyrion-backup.sh`). Lyrion uses `hostNetwork`, so point players at `lyrion.<domain>`, which follows the MetalLB VIP, not at a node IP.
 
 ## Roadmap
 
