@@ -31,6 +31,8 @@
     min_free_mb: 3000
     backup_dir: /var/backups/release-upgrade
     is_master: "{{ inventory_hostname in groups['masters'] }}"
+    # bookworm has python3.11, trixie python3.13; the discovered path breaks mid-run
+    ansible_python_interpreter: /usr/bin/python3
   tasks:
     - name: Require explicit opt-in
       assert:
